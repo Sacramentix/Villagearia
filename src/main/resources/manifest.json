@@ -1,0 +1,10 @@
+{
+    "Group": "Sacramentix",
+    "Name": "Villagearia",
+    "Version": "0.0.0",
+    "Authors": [],
+    "DisabledByDefault": false,
+    "IncludesAssetPack": false,
+    "ServerVersion": "*",
+    "Main": "villagearia.Villagearia"
+}

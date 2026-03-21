@@ -1,0 +1,4 @@
+[tools]
+gradle = "9.4.1"
+java = "jetbrains-25.0.2-b300.57"
+maven = "3.9.13"

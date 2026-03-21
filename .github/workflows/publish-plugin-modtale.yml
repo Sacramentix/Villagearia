@@ -1,0 +1,113 @@
+name: Publish Java Plugin (Manual)
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag (e.g. v1.0.0)'
+        required: true
+#      hytale_version:
+#        description: 'Hytale Server Version'
+#        required: true
+  release:
+    types: [published]
+
+jobs:
+  publish-existing-release:
+    runs-on: ubuntu-latest
+    env:
+      # REPLACE THIS WITH YOUR REAL MODTALE JAVA PLUGIN UUID
+      PROJECT_ID: "4bca3aeb-7f9c-4189-b15a-5f0e26b3a454"
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Determine Tag
+        id: get_tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "TAG_NAME=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG_NAME=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create Build Directory
+        run: |
+          mkdir -p build/libs
+          mkdir -p build/generated
+
+      - name: Download Jar Asset
+        uses: dsaltares/fetch-gh-release-asset@master
+        with:
+          version: 'tags/${{ steps.get_tag.outputs.TAG_NAME }}'
+          file: '.*\.jar'
+          regex: true
+          target: 'build/libs/'
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Download Hytale Version Asset
+        uses: dsaltares/fetch-gh-release-asset@master
+        with:
+          version: 'tags/${{ steps.get_tag.outputs.TAG_NAME }}'
+          file: 'hytaleServer.version'
+          target: 'build/generated/hytaleServer.version'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Modtale
+        run: |
+          # 1. Get Version from Output
+          VERSION_INPUT="${{ steps.get_tag.outputs.TAG_NAME }}"
+          # Clean 'v' prefix if present for versionNumber
+          VERSION_NUMBER="${VERSION_INPUT#v}"
+
+          # Read Hytale Version from downloaded asset
+          if [ -f build/generated/hytaleServer.version ]; then
+            HYTALE_VERSION=$(cat build/generated/hytaleServer.version)
+          else
+            echo "Error: hytaleServer.version asset not found!"
+            exit 1
+          fi
+
+          # Extract release notes for this specific version from CHANGELOG
+          # Matches lines starting with "## " followed by the version tag (with or without v)
+          # then prints untill next "## " line.
+          awk -v ver="$VERSION_INPUT" '
+            BEGIN { pattern = "^## " ver }
+            $0 ~ pattern { p=1; next }
+            /^## / { p=0 } 
+            p { print }
+          ' CHANGELOG.md > release_notes.md
+          
+          # Fallback if empty (maybe tag has v but changelog doesn't)
+          if [ ! -s release_notes.md ]; then
+             awk -v ver="$VERSION_NUMBER" '
+               BEGIN { pattern = "^## v?" ver }
+               $0 ~ pattern { p=1; next }
+               /^## / { p=0 } 
+               p { print }
+             ' CHANGELOG.md > release_notes.md
+          fi
+          
+          echo "--- Release Notes Preview ---"
+          cat release_notes.md
+          echo "-----------------------------"
+
+          # 2. Find the downloaded jar
+          # Exclude plain, sources, and javadoc jars
+          JAR_PATH=$(find build/libs \( -name "*-plain.jar" -o -name "*-sources.jar" -o -name "*-javadoc.jar" \) -prune -o -name "*.jar" -print | head -n 1)
+          
+          if [ -z "$JAR_PATH" ]; then
+            echo "Error: No suitable JAR file found in build/libs!"
+            ls -R build/libs
+            exit 1
+          fi
+          
+          echo "Found Jar: $JAR_PATH"
+          echo "Publishing Version: $VERSION_NUMBER"
+          echo "Game Version: $HYTALE_VERSION"
+
+          curl -X POST "https://api.modtale.net/api/v1/projects/$PROJECT_ID/versions" \
+            -H "X-MODTALE-KEY: ${{ secrets.MODTALE_API_KEY }}" \
+            -F "file=@$JAR_PATH" \
+            -F "versionNumber=$VERSION_NUMBER" \
+            -F "gameVersions=$HYTALE_VERSION" \
+            -F "changelog=<release_notes.md"
