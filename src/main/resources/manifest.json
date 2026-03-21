@@ -5,6 +5,9 @@
     "Authors": [],
     "DisabledByDefault": false,
     "IncludesAssetPack": false,
+    "Dependencies": {
+        "Hytale:NPC": "*"
+    },
     "ServerVersion": "*",
     "Main": "villagearia.Villagearia"
 }

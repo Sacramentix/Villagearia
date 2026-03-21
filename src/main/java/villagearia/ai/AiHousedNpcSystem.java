@@ -105,23 +105,6 @@ public class AiHousedNpcSystem extends TickingSystem<EntityStore> {
         }
     }
 
-    public static class LenientSystemDependency<T extends ISystem<EntityStore>> extends SystemDependency<EntityStore, T> {
-        public LenientSystemDependency(@Nonnull Order order, @Nonnull Class<T> systemClass) {
-            super(order, systemClass);
-        }
-        
-        @Override
-        public void validate(@Nonnull ComponentRegistry<EntityStore> registry) {
-            // Bypass validation to avoid "SystemType dependency isn't registered" crash
-            // because plugin systems load in an isolated or earlier context than server built-in systems.
-        }
-    }
-
-    // public Set<Dependency<EntityStore>> dependencies = Set.of(
-    //     new LenientSystemDependency<RoleSystems.BehaviourTickSystem>(Order.AFTER, RoleSystems.BehaviourTickSystem.class),
-    //     new LenientSystemDependency<SteeringSystem>(Order.BEFORE, SteeringSystem.class)
-    // );
-
     public Set<Dependency<EntityStore>> dependencies = Set.of(
         /*FIRST*/  new SystemDependency<EntityStore,RoleSystems.BehaviourTickSystem>(Order.AFTER, RoleSystems.BehaviourTickSystem.class),
         /*SECOND*/ // THIS

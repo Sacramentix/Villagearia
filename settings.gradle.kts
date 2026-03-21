@@ -24,5 +24,8 @@ hytale {
         Group = "Sacramentix"
         Name = "Villagearia"
         Main = "villagearia.Villagearia"
+        Dependencies = mapOf(
+            "Hytale:NPC" to "*"
+        )
     }
 }
