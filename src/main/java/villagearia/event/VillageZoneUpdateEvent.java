@@ -1,21 +1,15 @@
 package villagearia.event;
 
-import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.system.EcsEvent;
-import com.hypixel.hytale.server.core.entity.Entity;
 
 /**
  * Event representing an update to a VillageZoneComponent.
  */
 public class VillageZoneUpdateEvent extends EcsEvent {
+    
+    // Entity reference is automatically determined via the CommandBuffer invoke mechanism 
+    // and resolved inside the EntityEventSystem handlers via `archetypeChunk.getReferenceTo(index)`.
 
-    private final Ref<Entity> entityRef;
-
-    public VillageZoneUpdateEvent(Ref<Entity> entityRef) {
-        this.entityRef = entityRef;
-    }
-
-    public Ref<Entity> getEntityRef() {
-        return entityRef;
+    public VillageZoneUpdateEvent() {
     }
 }

@@ -27,7 +27,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import villagearia.component.PropertyDeed;
 import villagearia.component.PropertyDeedRef;
-import villagearia.ai.AiHousedNpc;
+import villagearia.ai.HousedNpcEntity;
 
 public class GivePropertyDeedFilled extends SimpleInstantInteraction {
 
@@ -133,9 +133,9 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
             return;
         }
 
-        var aiType = villagearia.Villagearia.get().getAiHousedNpcComponentType();
+        var aiType = villagearia.Villagearia.instance().getAiHousedNpcComponentType();
         var safeAiType = aiType;
-        commandBuffer.addComponent(targetRef, safeAiType, new AiHousedNpc(bedPos));
+        commandBuffer.addComponent(targetRef, safeAiType, new HousedNpcEntity(bedPos, deedRef.getVillageZoneUuid()));
         
         teleportNPCToBed(world, targetRef, bedPos);
 
@@ -154,29 +154,13 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
     @Nullable
     @SuppressWarnings("null")
     private PropertyDeed getPropertyDeedFromRef(World world, PropertyDeedRef deedRef) {
-        var propertyDeed = new java.util.concurrent.atomic.AtomicReference<PropertyDeed>();
-        var propertyDeedQuery = PropertyDeed.getComponentType();
-        if (deedRef.getPosition() == null) return null;
+        if (deedRef.getPosition() == null || deedRef.getVillageZoneUuid() == null) return null;
         LOGGER.atInfo().log("START getPropertyDeedFromRef");
         LOGGER.atInfo().log("deedRef " + deedRef.getPosition().toString());
-        world.getEntityStore().getStore().forEachChunk(
-            propertyDeedQuery,
-            (BiConsumer<ArchetypeChunk<EntityStore>, CommandBuffer<EntityStore>>) 
-            (chunk, cb) -> {
-            for (int i = 0; i < chunk.size(); i++) {
-                var compType = PropertyDeed.getComponentType();
-                var deed = chunk.getComponent(i, compType);
-                LOGGER.atInfo().log("deed " + deed.getPosition().toString());
-                if (deed != null && deed.getPosition() != null && deedRef.getPosition().equals(deed.getPosition())) {
-                    propertyDeed.set(deed);
-                }
-            }
-        });
+        var propertyDeed = villagearia.PropertyDeedManager.getPropertyDeed(world, deedRef.getVillageZoneUuid());
         LOGGER.atInfo().log("END getPropertyDeedFromRef");
-        return propertyDeed.get();
-    }
-
-    private void teleportNPCToBed(World world, Ref<EntityStore> targetRef, Vector3i bedPos) {
+        return propertyDeed;
+    }    private void teleportNPCToBed(World world, Ref<EntityStore> targetRef, Vector3i bedPos) {
         var targetPos = new Vector3d(bedPos.x + 0.5, bedPos.y + 1, bedPos.z + 0.5);
         var targetRot = new Vector3f(0f, 0f, 0f);
 

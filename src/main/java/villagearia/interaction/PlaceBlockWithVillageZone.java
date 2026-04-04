@@ -1,6 +1,8 @@
 package villagearia.interaction;
 
 
+import java.util.UUID;
+
 import javax.annotation.Nonnull;
 
 import com.hypixel.hytale.protocol.BlockPosition;
@@ -13,11 +15,15 @@ import com.hypixel.hytale.server.core.modules.interaction.interaction.CooldownHa
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.SimpleInteraction;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.client.PlaceBlockInteraction;
 import com.hypixel.hytale.server.core.entity.LivingEntity;
+import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import com.hypixel.hytale.server.core.entity.EntityUtils;
 import com.hypixel.hytale.component.AddReason;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
+import villagearia.component.VillageZone;
+
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
@@ -115,14 +121,14 @@ public class PlaceBlockWithVillageZone extends SimpleInteraction {
       placeVillageZoneInsideBlock(state.blockPosition, state.blockRotation, state.placedBlockId, commandBuffer);
    }
 
-   public static void placeVillageZoneInsideBlock(
+   public static UUID placeVillageZoneInsideBlock(
       BlockPosition blockPosition, BlockRotation blockRotation, int placedBlockId, CommandBuffer<EntityStore> commandBuffer
    ) {
-      if (blockPosition == null) return;
-      if (blockRotation == null) return;
-      if (placedBlockId == Integer.MIN_VALUE) return;
+      if (blockPosition == null) return null;
+      if (blockRotation == null) return null;
+      if (placedBlockId == Integer.MIN_VALUE) return null; 
       var blockType = BlockType.getAssetMap().getAsset(placedBlockId);
-      if (blockType == null) return;
+      if (blockType == null) return null;
       var outCenter = new Vector3d();
       
       var yaw = Rotation.VALUES[blockRotation.rotationYaw.ordinal()];
@@ -138,15 +144,20 @@ public class PlaceBlockWithVillageZone extends SimpleInteraction {
       
       var holder = EntityStore.REGISTRY.newHolder();
       
-      var transformType = TransformComponent.getComponentType();
-      var transform = holder.ensureAndGetComponent(transformType);
-      transform.setPosition(outCenter);
-      
-      var vzType = villagearia.component.VillageZone.getComponentType();
-      var vz = holder.ensureAndGetComponent(vzType);
-      vz.setRadius(30);
-      
+      var villageZoneType = VillageZone.getComponentType();
+      holder.addComponent(villageZoneType, 
+         new VillageZone(new org.joml.Vector3d(outCenter.x, outCenter.y, outCenter.z), 30*30)
+      );
+
+      var uuidType = UUIDComponent.getComponentType();
+      var uuidComponent = UUIDComponent.randomUUID();
+      holder.addComponent(uuidType, uuidComponent);
+
+      var world = commandBuffer.getExternalData().getWorld();
+      villagearia.VillageZoneManager.addVillageZone(world.getEntityStore().getStore(), uuidComponent.getUuid(), holder.getComponent(villageZoneType));
+
       commandBuffer.addEntity(holder, AddReason.SPAWN);
+      return uuidComponent.getUuid();
    }
 
    @Nonnull

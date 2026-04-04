@@ -16,8 +16,8 @@ import com.hypixel.hytale.server.core.universe.world.meta.state.RespawnBlock;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.math.util.ChunkUtil;
-import com.hypixel.hytale.math.vector.Vector3i;
 import java.util.stream.IntStream;
+import com.hypixel.hytale.math.vector.Vector3i;
 import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -164,7 +164,7 @@ public class PropertyDeed implements Component<EntityStore> {
         return respawnBlock.getOwnerUUID() == null;
     }
     public static ComponentType<EntityStore, PropertyDeed> getComponentType() {
-        return Villagearia.get().getPropertyDeedComponentType();
+        return Villagearia.instance().getPropertyDeedComponentType();
     }
 
 }

@@ -3,46 +3,43 @@ package villagearia.system;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import com.hypixel.hytale.component.Archetype;
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Ref;
-import com.hypixel.hytale.component.RemoveReason;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.EntityEventSystem;
-import com.hypixel.hytale.math.util.MathUtil;
 import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3i;
 import com.hypixel.hytale.server.core.event.events.ecs.BreakBlockEvent;
-import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Level;
+import java.util.UUID;
 
 import villagearia.component.VillageZone;
+import villagearia.component.VillageZoneResource;
 
 public class VillageZoneBreakBlockSystem extends EntityEventSystem<EntityStore, BreakBlockEvent> {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
-    @Nonnull
-    private final Query<EntityStore> query;
+    private Query<EntityStore> villageZoneQuery;;
 
     public VillageZoneBreakBlockSystem() {
         super(BreakBlockEvent.class);
-        this.query = Query.and(VillageZone.getComponentType(), TransformComponent.getComponentType());
+        villageZoneQuery = VillageZone.getComponentType();
     }
 
     @Nullable
     @Override
     public Query<EntityStore> getQuery() {
-        return this.query;
+        return Archetype.empty();
     }
 
+    @SuppressWarnings("null")
     @Override
     public void handle(
         int index,
@@ -52,88 +49,46 @@ public class VillageZoneBreakBlockSystem extends EntityEventSystem<EntityStore, 
         @Nonnull BreakBlockEvent event
     ) {
 
-        var transformType   = TransformComponent.getComponentType();
-        var villageZoneType =        VillageZone.getComponentType();
-
         var brokenBlock = event.getTargetBlock();
         var world = store.getExternalData().getWorld();
 
         // Find what the center of the broken block would be
         var originType = world.getBlockType(brokenBlock.getX(), brokenBlock.getY(), brokenBlock.getZ());
+        if (originType == null) return;
+        if (originType == BlockType.EMPTY) return;
         var expectedCenterRaw = new Vector3d();
-        var foundCenter = false;
-
-        if (originType != null && originType != BlockType.EMPTY) {
-
-            var rotationIndex = world.getBlockRotationIndex(brokenBlock.getX(), brokenBlock.getY(), brokenBlock.getZ());
-
+        var rotationIndex = world.getBlockRotationIndex(brokenBlock.getX(), brokenBlock.getY(), brokenBlock.getZ());
+        try {
             originType.getBlockCenter(rotationIndex, expectedCenterRaw);
-
-            expectedCenterRaw.setX(expectedCenterRaw.getX() + brokenBlock.getX());
-            expectedCenterRaw.setY(expectedCenterRaw.getY() + brokenBlock.getY());
-            expectedCenterRaw.setZ(expectedCenterRaw.getZ() + brokenBlock.getZ());
-
-            foundCenter = true;
-            // LOGGER.at(infoLevel).log("Calculated expected center: %s", expectedCenterRaw);
+        } catch(Exception e) {
+            return;
         }
 
-        final var hasExpectedCenter = foundCenter;
-        final var expectedCenter = expectedCenterRaw;
+        final double ecX = expectedCenterRaw.x + brokenBlock.getX();
+        final double ecY = expectedCenterRaw.y + brokenBlock.getY();
+        final double ecZ = expectedCenterRaw.z + brokenBlock.getZ();
 
-        List<Ref<EntityStore>> toRemove = new ArrayList<>();
+        List<UUID> toRemove = new ArrayList<>();
 
-        store.forEachChunk(
-            this.query,
-            (ArchetypeChunk<EntityStore> chunk, CommandBuffer<EntityStore> cb) -> {
-                // LOGGER.at(infoLevel).log("Iterating chunk with %d valid entities...", chunk.size());
-                for (var i = 0; i < chunk.size(); i++) {
-                    var entityRef = chunk.getReferenceTo(i);
+        var resource = (VillageZoneResource) world.getEntityStore().getStore().getResource(villagearia.Villagearia.getInstance().getVillageZoneResourceType());
+        if (resource != null) {
+            for (var entry : resource.getZones().entrySet()) {
+                var villageZone = entry.getValue();
+                var pos = villageZone.center;
 
-                    var transform = cb.getComponent(entityRef, transformType);
+                var dx = pos.x - ecX;
+                if (dx > 0.1 || dx < -0.1) continue;
+                var dy = pos.y - ecY;
+                if (dy > 0.1 || dy < -0.1) continue;
+                var dz = pos.z - ecZ;
+                if (dz > 0.1 || dz < -0.1) continue;
 
-                    if (transform == null) return;
-
-                    var pos = transform.getPosition();
-                    var coversBrokenBlock = false;
-
-                    if (hasExpectedCenter) {
-                        var dx = Math.abs(pos.getX() - expectedCenter.getX());
-                        var dy = Math.abs(pos.getY() - expectedCenter.getY());
-                        var dz = Math.abs(pos.getZ() - expectedCenter.getZ());
-                        
-                        // Check if entity is aligned with block center
-                        if (dx < 0.1 && dy < 0.1 && dz < 0.1) {
-                            // LOGGER.at(infoLevel).log("-> Center position match.");
-                            coversBrokenBlock = true;
-                        }
-                    }
-
-                    // Fallback: if block data was missing, check if it's within the block grid of the broken block.
-                    if (!hasExpectedCenter) {
-                        var entityBlockPos = 
-                            new Vector3i(
-                                MathUtil.floor(pos.getX()),
-                                MathUtil.floor(pos.getY()),
-                                MathUtil.floor(pos.getZ())
-                            );
-                        if (entityBlockPos.equals(brokenBlock)) {
-                            // LOGGER.at(infoLevel).log("-> Fallback block match.");
-                            coversBrokenBlock = true;
-                        }
-                    }
-
-                    if (coversBrokenBlock) {
-                        // LOGGER.at(infoLevel).log("-> VillageZone is queued for removal.");
-                        toRemove.add(entityRef);
-                    }
-                }
+                toRemove.add(entry.getKey());
             }
-        );
-
-        // LOGGER.at(infoLevel).log("Finished iterating properties. Entities to remove: %d", toRemove.size());
-        for (var ref : toRemove) {
-            commandBuffer.removeEntity(ref, RemoveReason.REMOVE);   
+            
+            for (var id : toRemove) {
+                villagearia.VillageZoneManager.removeVillageZone(world.getEntityStore().getStore(), id);
+            }
         }
-        // LOGGER.at(infoLevel).log("=== BreakBlockEvent Handled ===");
     }
 }

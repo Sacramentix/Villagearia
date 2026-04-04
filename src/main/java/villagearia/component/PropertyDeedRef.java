@@ -1,5 +1,7 @@
 package villagearia.component;
 
+import java.util.UUID;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -23,10 +25,12 @@ public class PropertyDeedRef implements Component<EntityStore> {
             PropertyDeedRef.class, PropertyDeedRef::new
         )
         .append(new KeyedCodec<>("Position", Vector3i.CODEC), (ref, position) -> ref.position = position, ref -> ref.position).add()
+        .append(new KeyedCodec<>("VillageZoneUuid", Codec.UUID_BINARY), (ref, uuid) -> ref.villageZoneUuid = uuid, ref -> ref.villageZoneUuid).add()
         .build();
 
     @Nullable
     private Vector3i position;
+    private UUID villageZoneUuid;
 
     /**
      * Default constructor for serialization.
@@ -34,8 +38,9 @@ public class PropertyDeedRef implements Component<EntityStore> {
     public PropertyDeedRef() {
     }
 
-    public PropertyDeedRef(@Nullable Vector3i position) {
+    public PropertyDeedRef(@Nullable Vector3i position, UUID uuid) {
         this.position = position;
+        this.villageZoneUuid = uuid;
     }
 
     @Nullable
@@ -47,11 +52,15 @@ public class PropertyDeedRef implements Component<EntityStore> {
         this.position = position;
     }
 
+    public UUID getVillageZoneUuid() {
+        return villageZoneUuid;
+    }
+
     public PropertyDeedRef clone() {
-        return new PropertyDeedRef(this.position);
+        return new PropertyDeedRef(this.position, villageZoneUuid);
     }
 
     public static ComponentType<EntityStore, PropertyDeedRef> getComponentType() {
-        return Villagearia.get().getPropertyDeedRefComponentType();
+        return Villagearia.instance().getPropertyDeedRefComponentType();
     }
 }

@@ -45,6 +45,7 @@ gradle-scaffoldit-modkit
 .gradle
 .kotlin
 devserver
+devserverOld
 /.idea/
 
 bin
