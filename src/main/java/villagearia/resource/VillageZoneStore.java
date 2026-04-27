@@ -1,18 +1,22 @@
-package villagearia.component;
+package villagearia.resource;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.codec.codecs.map.MapCodec;
 import com.hypixel.hytale.component.Resource;
+import com.hypixel.hytale.component.ResourceType;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import javax.annotation.Nonnull;
 
-public class VillageZoneResource implements Resource<EntityStore> {
-   @Nonnull
-   public static final BuilderCodec<VillageZoneResource> CODEC = BuilderCodec.builder(VillageZoneResource.class, VillageZoneResource::new)
+import villagearia.Villagearia;
+import villagearia.component.VillageZone;
+
+public class VillageZoneStore implements Resource<EntityStore> {
+   
+   public static final BuilderCodec<VillageZoneStore> CODEC = BuilderCodec.builder(VillageZoneStore.class, VillageZoneStore::new)
       .append(
          new KeyedCodec<>("Zones", new MapCodec<>(VillageZone.CODEC, HashMap::new, false)),
          (resource, zones) -> {
@@ -32,22 +36,28 @@ public class VillageZoneResource implements Resource<EntityStore> {
       .add()
       .build();
 
-   @Nonnull
+   
    private Map<UUID, VillageZone> zones = new HashMap<>();
 
-   public VillageZoneResource() {
+   public VillageZoneStore() {
    }
 
-   @Nonnull
+   
    public Map<UUID, VillageZone> getZones() {
       return this.zones;
    }
 
-   @Nonnull
+   
    @Override
    public Resource<EntityStore> clone() {
-      VillageZoneResource resource = new VillageZoneResource();
-      resource.zones = new HashMap<>(this.zones);
-      return resource;
+      var villageZoneStore = new VillageZoneStore();
+      villageZoneStore.zones = new HashMap<>(this.zones);
+      return villageZoneStore;
    }
+
+   public static ResourceType<EntityStore, VillageZoneStore> getResourceType() {
+      return Villagearia.instance().getVillageZoneStoreResourceType();
+   }
+
+
 }

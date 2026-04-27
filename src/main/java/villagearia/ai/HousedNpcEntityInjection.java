@@ -1,68 +1,41 @@
 package villagearia.ai;
 
+import java.util.ArrayDeque;
 import java.util.LinkedList;
-import java.util.stream.Collectors;
-
-import javax.annotation.Nonnull;
 
 import com.hypixel.hytale.builtin.mounts.BlockMountAPI;
 import com.hypixel.hytale.builtin.mounts.MountedComponent;
 import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.ComponentAccessor;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3f;
 import com.hypixel.hytale.math.vector.Vector3i;
+import com.hypixel.hytale.protocol.AnimationSlot;
+import com.hypixel.hytale.server.core.entity.AnimationUtils;
 import com.hypixel.hytale.server.core.modules.entity.component.HeadRotation;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.time.WorldTimeResource;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.util.FillerBlockUtil;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.server.npc.movement.controllers.MotionController;
-import com.hypixel.hytale.server.npc.navigation.AStarBase;
-import com.hypixel.hytale.server.npc.navigation.AStarEvaluator;
-import com.hypixel.hytale.server.npc.navigation.AStarNode;
 import com.hypixel.hytale.server.npc.navigation.AStarNodePoolProviderSimple;
-import com.hypixel.hytale.protocol.AnimationSlot;
-import com.hypixel.hytale.server.core.entity.AnimationUtils;
 
-import villagearia.VillageZoneManager;
+import villagearia.ai.HousedNpcPathfinder.PathfindError;
 import villagearia.ai.action.WaveNearbyNpc;
-import villagearia.component.VillageZone;
+import villagearia.ai.action.Work;
+import villagearia.ai.action.Work.WorkContext;
 import villagearia.graph.VillageZoneGraph;
+import villagearia.resource.manager.VillageZoneManager;
 import villagearia.utils.JomlUtils;
 import villagearia.utils.MyBlockUtils;
 
 public class HousedNpcEntityInjection {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-
-    public static class SimpleTargetEvaluator implements AStarEvaluator {
-        @Nonnull
-        private final Vector3d target;
-        public SimpleTargetEvaluator(@Nonnull Vector3d t) { this.target = t; }
-
-        @Override
-        public boolean isGoalReached(
-            Ref<EntityStore> ref, AStarBase aStarBase, AStarNode node, MotionController mc, ComponentAccessor<EntityStore> ca
-        ) {
-            var nodePos = node.getPosition();
-            var dx = nodePos.x - target.x;
-            var dy = nodePos.y - target.y;
-            var dz = nodePos.z - target.z;
-            return (dx*dx + dy*dy + dz*dz) < 1.0;
-        }
-
-        @Override
-        public float estimateToGoal(AStarBase aStarBase, Vector3d pos, MotionController mc) {
-            return (float) pos.distanceTo(target);
-        }
-    }
-
-    public HousedNpcPathfinder pathfinder = new HousedNpcPathfinder();
 
     public HousedNpcEntityInjection() {
         super();
@@ -78,29 +51,24 @@ public class HousedNpcEntityInjection {
         var npc = ctx.npc();
         var housedNpc = ctx.housedNpc();
         var tickIndex = ctx.i();
+        var dt = ctx.dt();
         var cb = ctx.cb();
 
         wipeRoleBehavior(npc);
-
-        var housedNpcType    = HousedNpcEntity.getComponentType();
-        var npcType          = NPCEntity.getComponentType();
-        var headRotationType = HeadRotation.getComponentType();
-        var transformType    = TransformComponent.getComponentType();
-        var mountedType      = MountedComponent.getComponentType();
         
-        var world = store.getExternalData().getWorld();
+        // var world = store.getExternalData().getWorld();
         
         var worldTime = store.getResource(WorldTimeResource.getResourceType());
-        var daytimeSeconds = world.getDaytimeDurationSeconds();
-        var nighttimeSeconds = world.getNighttimeDurationSeconds();
-        var totalDayDurationSeconds = daytimeSeconds + nighttimeSeconds;
+        // var daytimeSeconds = world.getDaytimeDurationSeconds();
+        // var nighttimeSeconds = world.getNighttimeDurationSeconds();
+        // var totalDayDurationSeconds = daytimeSeconds + nighttimeSeconds;
         var isNight = worldTime != null && (worldTime.getDayProgress() > 0.8 || worldTime.getDayProgress() < 0.2);
         var isDay = !isNight;
 
         var entityRef = chunk.getReferenceTo(tickIndex);
 
-        var transform = chunk.getComponent(tickIndex, transformType);
-        var headRotation = chunk.getComponent(tickIndex, headRotationType);
+        var transform = chunk.getComponent(tickIndex, TransformComponent.getComponentType());
+        var headRotation = chunk.getComponent(tickIndex, HeadRotation.getComponentType());
         if (headRotation == null) return;
 
         var pos = transform.getPosition();
@@ -119,7 +87,7 @@ public class HousedNpcEntityInjection {
         ) {
             housedNpc.setState("PATHING_TOWARD_BED");
             housedNpc.setTargetPos((Vector3i) null);
-            housedNpc.setPathQueue(new LinkedList<>());
+            housedNpc.setPathQueue(new ArrayDeque<>());
             pathSession.currentTarget = (Vector3i) null;
             standup(entityRef, cb);
         }
@@ -131,7 +99,7 @@ public class HousedNpcEntityInjection {
         ) {
             housedNpc.setState("PATHING_RANDOM");
             housedNpc.setTargetPos((Vector3i) null);
-            housedNpc.setPathQueue(new LinkedList<>());
+            housedNpc.setPathQueue(new ArrayDeque<>());
             pathSession.currentTarget = (Vector3i) null;
             standup(entityRef, cb);
         }
@@ -140,67 +108,52 @@ public class HousedNpcEntityInjection {
         var state = housedNpc.getState();
 
         if ("PATHING_RANDOM".equals(state)) {
-            var queue = housedNpc.getPathQueue();
-            if (housedNpc.getTargetPos() == null && queue.isEmpty()) {
-                refillQueueWithRandomVillageZonePath(store, pos, housedNpc);
-                // LOGGER.atInfo().log(
-                //     "QUEUE REFILL " +
-                //     queue.stream().map((uuid) -> {
-                //         var ref = store.getExternalData().getRefFromUUID(uuid);
-                //         var t = ref.getStore().getComponent(ref, transformType);
-                //         return "(|"+uuid+"|"+ t.getPosition().toString()+")";
-                //     }).collect(Collectors.joining(",\n ", "[\n", "\n]"))
-                // );
-            }
-            if (housedNpc.getTargetPos() == null) {
-                setPathfindTargetToNext(store, housedNpc);
-                // LOGGER.atInfo().log("SET TARGET " + housedNpc.getTargetPos().toString());
-                // LOGGER.atInfo().log(
-                //     "QUEUE CHECK " +
-                //     queue.stream().map((uuid) -> {
-                //         var ref = store.getExternalData().getRefFromUUID(uuid);
-                //         var t = ref.getStore().getComponent(ref, transformType);
-                //         return "(|"+uuid+"|"+ t.getPosition().toString()+")";
-                //     }).collect(Collectors.joining(",\n ", "[\n", "\n]"))
-                // );
-            }
+            Work.behavior(new WorkContext(entityRef, housedNpc, npc, worldTime, transform, headRotation, pos,store, dt, cb));
+            return;
+            // var queue = housedNpc.getPathQueue();
+            // if (housedNpc.getTargetPos() == null && queue.isEmpty()) {
+            //     refillQueueWithRandomVillageZonePath(store, pos, housedNpc);
+            // }
+            // if (housedNpc.getTargetPos() == null) {
+            //     setPathfindTargetToNext(store, housedNpc);
+            // }
             
-            var tPos = housedNpc.getTargetPos();
-            if (tPos == null) return;
+            // var tPos = housedNpc.getTargetPos();
+            // if (tPos == null) return;
             
-            var actualTarget = new Vector3d(tPos.x + 0.5, tPos.y, tPos.z + 0.5);
+            // var actualTarget = new Vector3d(tPos.x + 0.5, tPos.y, tPos.z + 0.5);
             
-            pathSession.world = store.getExternalData().getWorld();
-            var provider = store.getResource(AStarNodePoolProviderSimple.getResourceType());
-            pathfinder.pathfindTo(npc, pathSession, provider, store, tPos, pos, entityRef, actualTarget, headRotation, cb);
+            // pathSession.world = store.getExternalData().getWorld();
+            // var provider = store.getResource(AStarNodePoolProviderSimple.getResourceType());
+            // HousedNpcPathfinder.pathfindTo(npc, pathSession, provider, store, tPos, pos, entityRef, actualTarget, headRotation, cb);
 
-            double dx = actualTarget.x - pos.x;
-            double dy = actualTarget.y - pos.y;
-            double dz = actualTarget.z - pos.z;
-            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            // var dx = actualTarget.x - pos.x;
+            // var dy = actualTarget.y - pos.y;
+            // var dz = actualTarget.z - pos.z;
+            // var distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-            if (distance < 3.0 && !queue.isEmpty()) {
-                LOGGER.atInfo().log("NULL TARGET " + housedNpc.getTargetPos().toString() + " | " + distance);
+            // if (distance < 3.0 && !queue.isEmpty()) {
+            //     LOGGER.atInfo().log("NULL TARGET " + housedNpc.getTargetPos().toString() + " | " + distance);
 
-                housedNpc.setTargetPos((Vector3i) null);
-                // if (!success) {
-                //     housedNpc.setState("SEATING");
-                //     return;
-                // }
-            } else if (distance < 1.5 && queue.isEmpty()) {
-                housedNpc.setState("SEATING");
+            //     housedNpc.setTargetPos((Vector3i) null);
+            //     // if (!success) {
+            //     //     housedNpc.setState("SEATING");
+            //     //     return;
+            //     // }
+            // } else if (distance < 1.5 && queue.isEmpty()) {
+            //     housedNpc.setState("SEATING");
 
-            }
+            // }
             
         } else if ("SEATING".equals(state)) {
-            if (entityRef.getStore().getComponent(entityRef, mountedType) == null) {
+            if (entityRef.getStore().getComponent(entityRef, MountedComponent.getComponentType()) == null) {
                 sitOnNearestBench(entityRef, store.getExternalData().getWorld(), pos, cb);
             }
             housedNpc.increaseWaitTicks();
             if (housedNpc.getWaitTicks() > 500) {
                 housedNpc.setState("PATHING_RANDOM");
                 housedNpc.setTargetPos((Vector3i) null);
-                housedNpc.setPathQueue(new LinkedList<>());
+                housedNpc.setPathQueue(new ArrayDeque<>());
                 housedNpc.setWaitTicks(0);
                 standup(entityRef, cb);
             }
@@ -214,7 +167,7 @@ public class HousedNpcEntityInjection {
                 //     "QUEUE REFILL " +
                 //     queue.stream().map((uuid) -> {
                 //         var ref = store.getExternalData().getRefFromUUID(uuid);
-                //         var t = ref.getStore().getComponent(ref, transformType);
+                //         var t = ref.getStore().getComponent(ref, TransformComponent.getComponentType());
                 //         return "(|"+uuid+"|"+ t.getPosition().toString()+")";
                 //     }).collect(Collectors.joining(",\n ", "[\n", "\n]"))
                 // );
@@ -230,7 +183,11 @@ public class HousedNpcEntityInjection {
             
             pathSession.world = store.getExternalData().getWorld();
             var provider = store.getResource(AStarNodePoolProviderSimple.getResourceType());
-            pathfinder.pathfindTo(npc, pathSession, provider, store, tPos, pos, entityRef, actualTarget, headRotation, cb);
+            try {
+                HousedNpcPathfinder.pathfindTo(npc, pathSession, provider, store, tPos, pos, entityRef, actualTarget, headRotation, cb);
+            } catch(PathfindError e) {
+                
+            }
 
             var distance = actualTarget.distanceTo(pos);
 
@@ -252,7 +209,8 @@ public class HousedNpcEntityInjection {
                 housedNpc.setState("SLEEPING");
             }
         } else if ("SLEEPING".equals(state)) {
-            if (entityRef.getStore().getComponent(entityRef, mountedType) == null) {
+            housedNpc.workDuration -= dt;
+            if (entityRef.getStore().getComponent(entityRef, MountedComponent.getComponentType()) == null) {
                 sleepOnNearestBed(entityRef, store.getExternalData().getWorld(), pos, cb);
             }
             AnimationUtils.playAnimation(entityRef, AnimationSlot.Status, "Sleep", cb);
@@ -306,48 +264,45 @@ public class HousedNpcEntityInjection {
         double minDistance = Double.MAX_VALUE;
         
         for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    Vector3i blockPos = new Vector3i(x, y, z);
-                    var blockType = MyBlockUtils.getSafeBlockType(world, blockPos);
-                    if (blockType != null) {
-                        boolean isSeat = false;
-                        if (blockType.getSeats() != null) {
-                            isSeat = true;
-                        } else if (blockType.getId() != null) {
-                            String id = blockType.getId().toLowerCase();
-                            if (id.contains("bench") || id.contains("chair") || id.contains("stool") || id.contains("seat") || id.contains("couch")) {
-                                if (blockType.getSeats() != null) {
-                                    isSeat = true;
-                                }
-                            }
-                        }
-                        
-                        if (isSeat) {
-                            var chunk = world.getChunkIfInMemory(com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(x, z));
-                            if (chunk != null) {
-                                int filler = MyBlockUtils.getSafeBlockFiller(world, x, y, z);
-                                if (filler != 0) {
-                                    blockPos = new Vector3i(
-                                        x - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackX(filler),
-                                        y - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackY(filler),
-                                        z - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackZ(filler)
-                                    );
-                                }
-                            }
-                            
-                            double dx = blockPos.x + 0.5 - pos.x;
-                            double dy = blockPos.y + 0.5 - pos.y;
-                            double dz = blockPos.z + 0.5 - pos.z;
-                            double distSq = dx*dx + dy*dy + dz*dz;
-                            if (distSq < minDistance) {
-                                minDistance = distSq;
-                                nearestBench = blockPos;
-                            }
-                        }
+        for (int y = minY; y <= maxY; y++) {
+        for (int z = minZ; z <= maxZ; z++) {
+            var blockPos = new Vector3i(x, y, z);
+            var blockType = MyBlockUtils.getSafeBlockType(world, blockPos);
+            if (blockType == null) continue;
+            var isSeat = false;
+            if (blockType.getSeats() != null) {
+                isSeat = true;
+            } else if (blockType.getId() != null) {
+                var id = blockType.getId().toLowerCase();
+                if (id.contains("bench") || id.contains("chair") || id.contains("stool") || id.contains("seat") || id.contains("couch")) {
+                    if (blockType.getSeats() != null) {
+                        isSeat = true;
                     }
                 }
             }
+            
+            if (!isSeat) continue;
+            var chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(x, z));
+            if (chunk != null) {
+                int filler = MyBlockUtils.getSafeBlockFiller(world, x, y, z);
+                if (filler != 0) {
+                    blockPos = new Vector3i(
+                        x - FillerBlockUtil.unpackX(filler),
+                        y - FillerBlockUtil.unpackY(filler),
+                        z - FillerBlockUtil.unpackZ(filler)
+                    );
+                }
+            }
+            
+            double dx = blockPos.x + 0.5 - pos.x;
+            double dy = blockPos.y + 0.5 - pos.y;
+            double dz = blockPos.z + 0.5 - pos.z;
+            double distSq = dx*dx + dy*dy + dz*dz;
+            if (distSq >= minDistance) continue;
+            minDistance = distSq;
+            nearestBench = blockPos;
+        }
+        }
         }
         
         if (nearestBench != null) {
@@ -358,9 +313,8 @@ public class HousedNpcEntityInjection {
     }
 
     private void standup(Ref<EntityStore> entityRef, CommandBuffer<EntityStore> cb) {
-        var mountedType = MountedComponent.getComponentType();
-        if (cb.getComponent(entityRef, mountedType) != null) {
-            cb.removeComponent(entityRef, mountedType);
+        if (cb.getComponent(entityRef, MountedComponent.getComponentType()) != null) {
+            cb.removeComponent(entityRef, MountedComponent.getComponentType());
         }
         AnimationUtils.stopAnimation(entityRef, AnimationSlot.Status, true, cb);
     }
@@ -380,42 +334,40 @@ public class HousedNpcEntityInjection {
         var minDistance = Double.MAX_VALUE;
         
         for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    Vector3i blockPos = new Vector3i(x, y, z);
-                    
-                    var blockType = MyBlockUtils.getSafeBlockType(world, blockPos);
-                    if (blockType != null) {
-                        boolean isBed = false;
-                        if (blockType.getBeds() != null) {
-                            isBed = true;
-                        }
-                        
-                        if (isBed) {
-                            var chunk = world.getChunkIfInMemory(com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(x, z));
-                            if (chunk != null) {
-                                int filler = MyBlockUtils.getSafeBlockFiller(world, x, y, z);
-                                if (filler != 0) {
-                                    blockPos = new Vector3i(
-                                        x - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackX(filler),
-                                        y - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackY(filler),
-                                        z - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackZ(filler)
-                                    );
-                                }
-                            }
-                            
-                            double dx = blockPos.x + 0.5 - pos.x;
-                            double dy = blockPos.y + 0.5 - pos.y;
-                            double dz = blockPos.z + 0.5 - pos.z;
-                            double distSq = dx*dx + dy*dy + dz*dz;
-                            if (distSq < minDistance) {
-                                minDistance = distSq;
-                                nearestBench = blockPos;
-                            }
-                        }
-                    }
+        for (int y = minY; y <= maxY; y++) {
+        for (int z = minZ; z <= maxZ; z++) {
+            var blockPos = new Vector3i(x, y, z);
+            
+            var blockType = MyBlockUtils.getSafeBlockType(world, blockPos);
+            if (blockType != null) continue;
+            var isBed = false;
+            if (blockType.getBeds() != null) {
+                isBed = true;
+            }
+            
+            if (isBed) continue;
+            var chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(x, z));
+            if (chunk != null) {
+                var filler = MyBlockUtils.getSafeBlockFiller(world, x, y, z);
+                if (filler != 0) {
+                    blockPos = new Vector3i(
+                        x - FillerBlockUtil.unpackX(filler),
+                        y - FillerBlockUtil.unpackY(filler),
+                        z - FillerBlockUtil.unpackZ(filler)
+                    );
                 }
             }
+            
+            double dx = blockPos.x + 0.5 - pos.x;
+            double dy = blockPos.y + 0.5 - pos.y;
+            double dz = blockPos.z + 0.5 - pos.z;
+            double distSq = dx*dx + dy*dy + dz*dz;
+            if (distSq < minDistance) {
+                minDistance = distSq;
+                nearestBench = blockPos;
+            }
+        }
+        }
         }
         
         if (nearestBench != null) {

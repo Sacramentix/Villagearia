@@ -1,5 +1,2 @@
-Tool_Scythe_Iron.name = Iron scythe
-Tool_Scythe_Thorium.name = Thorium scythe
-Tool_Scythe_Cobalt.name = Cobalt scythe
-Tool_Scythe_Adamantite.name = Adamantite scythe
-Tool_Scythe.description = Harvest crop in a large area
+Property_Deed_Empty.name = Empty property deed
+Property_Deed_Filled.name = Filled property deed

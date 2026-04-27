@@ -1,7 +1,5 @@
 package villagearia.component;
 
-import javax.annotation.Nonnull;
-
 import org.joml.Vector3d;
 
 import com.hypixel.hytale.codec.Codec;
@@ -19,7 +17,7 @@ import villagearia.utils.JomlCodecs;
  */
 public class VillageZone implements Component<EntityStore> {
 
-    @Nonnull
+    
     public static final BuilderCodec<VillageZone> CODEC = BuilderCodec.builder(
             VillageZone.class, VillageZone::new
         )

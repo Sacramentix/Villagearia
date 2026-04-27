@@ -2,41 +2,31 @@ package villagearia.interaction;
 
 import java.util.UUID;
 
-import javax.annotation.Nonnull;
-
+import com.hypixel.hytale.codec.Codec;
+import com.hypixel.hytale.codec.KeyedCodec;
+import com.hypixel.hytale.codec.builder.BuilderCodec;
+import com.hypixel.hytale.component.CommandBuffer;
+import com.hypixel.hytale.math.vector.Vector3i;
 import com.hypixel.hytale.protocol.BlockPosition;
 import com.hypixel.hytale.protocol.BlockRotation;
 import com.hypixel.hytale.protocol.InteractionState;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.protocol.WaitForDataFrom;
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.entity.InteractionContext;
+import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.CooldownHandler;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.SimpleInteraction;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.client.PlaceBlockInteraction;
-import com.hypixel.hytale.server.core.entity.LivingEntity;
-import com.hypixel.hytale.server.core.entity.entities.Player;
-import com.hypixel.hytale.server.core.inventory.ItemStack;
-import com.hypixel.hytale.server.core.entity.EntityUtils;
-import com.hypixel.hytale.component.AddReason;
-import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.math.vector.Vector3i;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
-import villagearia.PropertyDeedManager;
 import villagearia.component.PropertyDeed;
 import villagearia.component.PropertyDeedRef;
-
-import com.hypixel.hytale.codec.Codec;
-import com.hypixel.hytale.codec.KeyedCodec;
-import com.hypixel.hytale.codec.builder.BuilderCodec;
-import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
+import villagearia.resource.manager.PropertyDeedManager;
 
 public class PlacePropertyDeed extends SimpleInteraction {
-
-    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-
-    @Nonnull
+    
     public static final BuilderCodec<PlacePropertyDeed> CODEC = BuilderCodec.builder(
             PlacePropertyDeed.class, PlacePropertyDeed::new, SimpleInteraction.CODEC)
             .documentation("Places the current or given block, and registers village zones.")
@@ -89,8 +79,8 @@ public class PlacePropertyDeed extends SimpleInteraction {
             return this.allowDragPlacement;
         }
 
-        public void callTick0(boolean firstRun, float time, @Nonnull InteractionType type,
-                @Nonnull InteractionContext context, @Nonnull CooldownHandler cooldownHandler) {
+        public void callTick0(boolean firstRun, float time,  InteractionType type,
+                 InteractionContext context,  CooldownHandler cooldownHandler) {
             super.tick0(firstRun, time, type, context, cooldownHandler);
         }
 
@@ -108,7 +98,7 @@ public class PlacePropertyDeed extends SimpleInteraction {
     public PlacePropertyDeed() {
     }
 
-    @Nonnull
+    
     @Override
     public WaitForDataFrom getWaitForDataFrom() {
         return this.placeBlockInteraction.getWaitForDataFrom();
@@ -116,32 +106,27 @@ public class PlacePropertyDeed extends SimpleInteraction {
 
     @Override
     protected void tick0(
-            boolean firstRun, float time, @Nonnull InteractionType type, @Nonnull InteractionContext context,
-            @Nonnull CooldownHandler cooldownHandler) {
-        var clientState = context.getClientState();
+        boolean firstRun, float time,  InteractionType type,
+         InteractionContext ctx,  CooldownHandler cooldownHandler
+    ) {
+        var clientState = ctx.getClientState();
 
         assert clientState != null;
 
         if (!firstRun) {
-            context.getState().state = clientState.state;
+            ctx.getState().state = clientState.state;
             return;
         }
-        var ref = context.getEntity();
-        var commandBuffer = context.getCommandBuffer();
-        if (commandBuffer == null)
-            return;
-        var rawEntity = EntityUtils.getEntity(ref, commandBuffer);
-        if (!(rawEntity instanceof LivingEntity))
-            return;
+        var cb = ctx.getCommandBuffer();
 
-        this.placeBlockInteraction.callTick0(firstRun, time, type, context, cooldownHandler);
+        this.placeBlockInteraction.callTick0(firstRun, time, type, ctx, cooldownHandler);
 
-        var state = context.getState();
+        var state = ctx.getState();
 
         var pos = state.blockPosition;
 
         var uuid = placePropertyDeedEntity(
-            state.blockPosition, state.blockRotation, state.placedBlockId, commandBuffer
+            state.blockPosition, state.blockRotation, state.placedBlockId, cb
         );
         if (uuid == null) {
 
@@ -150,43 +135,39 @@ public class PlacePropertyDeed extends SimpleInteraction {
         var filledDeed = new ItemStack("Property_Deed_Filled", 1)
             .withMetadata("PropertyDeedRef", PropertyDeedRef.CODEC, deedRef);
 
-        var owningEntity = context.getOwningEntity();
+        var owningEntity = ctx.getOwningEntity();
         if (owningEntity != null && owningEntity.isValid()) {
-            var playerCompType = Player.getComponentType();
-            var player = owningEntity.getStore().getComponent(owningEntity, playerCompType);
+            var player = owningEntity.getStore().getComponent(owningEntity, Player.getComponentType());
             if (player != null) {
                 player.getInventory().getCombinedHotbarFirst().addItemStack(filledDeed);
             }
         }
 
 
-        context.getState().state = InteractionState.Finished;
+        ctx.getState().state = InteractionState.Finished;
     }
 
     public static UUID placePropertyDeedEntity(
-        BlockPosition blockPosition, BlockRotation blockRotation, int placedBlockId, CommandBuffer<EntityStore> commandBuffer
+        BlockPosition blockPosition, BlockRotation blockRotation, int placedBlockId, CommandBuffer<EntityStore> cb
     ) {
-        var world = commandBuffer.getExternalData().getWorld();
+        var world = cb.getExternalData().getWorld();
         var deed = new PropertyDeed(15);
-        LOGGER.atInfo().log("Deed blockPosition " + blockPosition.toString());
         deed.setPosition(new Vector3i(blockPosition.x, blockPosition.y, blockPosition.z));
-        LOGGER.atInfo().log("Deed Vector3i " + deed.getPosition().toString());
         deed.scan(world);
-
 
         var uuid = PlaceBlockWithVillageZone.placeVillageZoneInsideBlock(
             new BlockPosition(blockPosition.x, blockPosition.y, blockPosition.z),
             new BlockRotation(),
             placedBlockId,
-            commandBuffer
+            cb
         );
         if (uuid == null) return null;
 
-        PropertyDeedManager.addPropertyDeed(world, uuid, deed);
+        PropertyDeedManager.addPropertyDeed(cb.getStore(), uuid, deed);
         return uuid;
     }
 
-    @Nonnull
+    
     @Override
     protected com.hypixel.hytale.protocol.Interaction generatePacket() {
         return this.placeBlockInteraction.callGeneratePacket();

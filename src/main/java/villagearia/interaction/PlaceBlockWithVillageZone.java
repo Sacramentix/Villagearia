@@ -3,37 +3,30 @@ package villagearia.interaction;
 
 import java.util.UUID;
 
-import javax.annotation.Nonnull;
-
+import com.hypixel.hytale.codec.Codec;
+import com.hypixel.hytale.codec.KeyedCodec;
+import com.hypixel.hytale.codec.builder.BuilderCodec;
+import com.hypixel.hytale.component.CommandBuffer;
+import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.protocol.BlockPosition;
 import com.hypixel.hytale.protocol.BlockRotation;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.protocol.WaitForDataFrom;
-import com.hypixel.hytale.server.core.entity.InteractionContext;
-import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
-import com.hypixel.hytale.server.core.modules.interaction.interaction.CooldownHandler;
-import com.hypixel.hytale.server.core.modules.interaction.interaction.config.SimpleInteraction;
-import com.hypixel.hytale.server.core.modules.interaction.interaction.config.client.PlaceBlockInteraction;
-import com.hypixel.hytale.server.core.entity.LivingEntity;
-import com.hypixel.hytale.server.core.entity.UUIDComponent;
-import com.hypixel.hytale.server.core.entity.EntityUtils;
-import com.hypixel.hytale.component.AddReason;
-import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-
-import villagearia.component.VillageZone;
-
-import com.hypixel.hytale.codec.Codec;
-import com.hypixel.hytale.codec.KeyedCodec;
-import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.Rotation;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.RotationTuple;
+import com.hypixel.hytale.server.core.entity.InteractionContext;
+import com.hypixel.hytale.server.core.modules.interaction.interaction.CooldownHandler;
+import com.hypixel.hytale.server.core.modules.interaction.interaction.config.SimpleInteraction;
+import com.hypixel.hytale.server.core.modules.interaction.interaction.config.client.PlaceBlockInteraction;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
+import villagearia.component.VillageZone;
+import villagearia.resource.manager.VillageZoneManager;
 
 public class PlaceBlockWithVillageZone extends SimpleInteraction {
 
-   @Nonnull
+   
    public static final BuilderCodec<PlaceBlockWithVillageZone> CODEC = BuilderCodec.builder(
          PlaceBlockWithVillageZone.class, PlaceBlockWithVillageZone::new, SimpleInteraction.CODEC
       )
@@ -74,7 +67,7 @@ public class PlaceBlockWithVillageZone extends SimpleInteraction {
       public void setAllowDragPlacement(boolean b) { this.allowDragPlacement = b; }
       public boolean isAllowDragPlacement() { return this.allowDragPlacement; }
 
-      public void callTick0(boolean firstRun, float time, @Nonnull InteractionType type, @Nonnull InteractionContext context, @Nonnull CooldownHandler cooldownHandler) {
+      public void callTick0(boolean firstRun, float time,  InteractionType type,  InteractionContext context,  CooldownHandler cooldownHandler) {
          super.tick0(firstRun, time, type, context, cooldownHandler);
       }
       
@@ -92,7 +85,7 @@ public class PlaceBlockWithVillageZone extends SimpleInteraction {
    public PlaceBlockWithVillageZone() {
    }
 
-   @Nonnull
+   
    @Override
    public WaitForDataFrom getWaitForDataFrom() {
       return this.placeBlockInteraction.getWaitForDataFrom();
@@ -100,29 +93,25 @@ public class PlaceBlockWithVillageZone extends SimpleInteraction {
 
    @Override
    protected void tick0(
-      boolean firstRun, float time, @Nonnull InteractionType type, @Nonnull InteractionContext context, @Nonnull CooldownHandler cooldownHandler
+      boolean firstRun, float time,  InteractionType type,  InteractionContext ctx,  CooldownHandler cooldownHandler
    )  {
-      var clientState = context.getClientState();
+      var clientState = ctx.getClientState();
 
       assert clientState != null;
 
       if (!firstRun) {
-         context.getState().state = clientState.state;
+         ctx.getState().state = clientState.state;
          return;
       }
-      var ref = context.getEntity();
-      var commandBuffer = context.getCommandBuffer();
-      if (commandBuffer == null) return;
-      var rawEntity = EntityUtils.getEntity(ref, commandBuffer);
-      if (!(rawEntity instanceof LivingEntity)) return;
-      
-      this.placeBlockInteraction.callTick0(firstRun, time, type, context, cooldownHandler);
-      var state = context.getState();
-      placeVillageZoneInsideBlock(state.blockPosition, state.blockRotation, state.placedBlockId, commandBuffer);
+      var cb = ctx.getCommandBuffer();
+
+      this.placeBlockInteraction.callTick0(firstRun, time, type, ctx, cooldownHandler);
+      var state = ctx.getState();
+      placeVillageZoneInsideBlock(state.blockPosition, state.blockRotation, state.placedBlockId, cb);
    }
 
    public static UUID placeVillageZoneInsideBlock(
-      BlockPosition blockPosition, BlockRotation blockRotation, int placedBlockId, CommandBuffer<EntityStore> commandBuffer
+      BlockPosition blockPosition, BlockRotation blockRotation, int placedBlockId, CommandBuffer<EntityStore> cb
    ) {
       if (blockPosition == null) return null;
       if (blockRotation == null) return null;
@@ -131,9 +120,9 @@ public class PlaceBlockWithVillageZone extends SimpleInteraction {
       if (blockType == null) return null;
       var outCenter = new Vector3d();
       
-      var yaw = Rotation.VALUES[blockRotation.rotationYaw.ordinal()];
+      var yaw   = Rotation.VALUES[blockRotation.rotationYaw.ordinal()];
       var pitch = Rotation.VALUES[blockRotation.rotationPitch.ordinal()];
-      var roll = Rotation.VALUES[blockRotation.rotationRoll.ordinal()];
+      var roll  = Rotation.VALUES[blockRotation.rotationRoll.ordinal()];
       
       var rotationIndex = RotationTuple.index(yaw, pitch, roll);
       blockType.getBlockCenter(rotationIndex, outCenter);
@@ -142,25 +131,14 @@ public class PlaceBlockWithVillageZone extends SimpleInteraction {
       outCenter.setY(outCenter.getY() + blockPosition.y);
       outCenter.setZ(outCenter.getZ() + blockPosition.z);
       
-      var holder = EntityStore.REGISTRY.newHolder();
-      
-      var villageZoneType = VillageZone.getComponentType();
-      holder.addComponent(villageZoneType, 
-         new VillageZone(new org.joml.Vector3d(outCenter.x, outCenter.y, outCenter.z), 30*30)
-      );
+      var villageZone = new VillageZone(new org.joml.Vector3d(outCenter.x, outCenter.y, outCenter.z), 30*30);
+      var uuid = UUID.randomUUID();
+      VillageZoneManager.addVillageZone(cb.getStore(), uuid, villageZone);
 
-      var uuidType = UUIDComponent.getComponentType();
-      var uuidComponent = UUIDComponent.randomUUID();
-      holder.addComponent(uuidType, uuidComponent);
-
-      var world = commandBuffer.getExternalData().getWorld();
-      villagearia.VillageZoneManager.addVillageZone(world.getEntityStore().getStore(), uuidComponent.getUuid(), holder.getComponent(villageZoneType));
-
-      commandBuffer.addEntity(holder, AddReason.SPAWN);
-      return uuidComponent.getUuid();
+      return uuid;
    }
 
-   @Nonnull
+   
    @Override
    protected com.hypixel.hytale.protocol.Interaction generatePacket() {
       return this.placeBlockInteraction.callGeneratePacket();

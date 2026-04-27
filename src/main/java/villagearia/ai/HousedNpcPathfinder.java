@@ -1,10 +1,10 @@
 package villagearia.ai;
 
 import java.util.ArrayList;
-
-import javax.annotation.Nonnull;
+import java.util.List;
 
 import com.hypixel.hytale.component.CommandBuffer;
+import com.hypixel.hytale.component.ComponentAccessor;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.math.util.ChunkUtil;
@@ -18,22 +18,128 @@ import com.hypixel.hytale.server.core.universe.world.chunk.section.BlockSection;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.FillerBlockUtil;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
+import com.hypixel.hytale.server.npc.movement.controllers.MotionController;
+import com.hypixel.hytale.server.npc.navigation.AStarBase;
 import com.hypixel.hytale.server.npc.navigation.AStarBase.Progress;
+import com.hypixel.hytale.server.npc.navigation.AStarEvaluator;
 import com.hypixel.hytale.server.npc.navigation.AStarNode;
 import com.hypixel.hytale.server.npc.navigation.AStarNodePoolProvider;
+import com.hypixel.hytale.server.npc.navigation.AStarNodePoolProviderSimple;
 
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import villagearia.ai.HousedNpcEntityInjection.SimpleTargetEvaluator;
+import villagearia.graph.VillageZoneGraph;
+import villagearia.resource.manager.VillageZoneManager;
+import villagearia.system.DoorTracker;
+import villagearia.utils.JomlUtils;
 import villagearia.utils.MathSegmentUtils;
 import villagearia.utils.MyBlockUtils;
 
 public class HousedNpcPathfinder {
-    public void pathfindTo(
-        NPCEntity npc, HousedNpcPathSession session, AStarNodePoolProvider provider, @Nonnull Store<EntityStore> store,
+
+    public static class SimpleTargetEvaluator implements AStarEvaluator {
+        
+        private final Vector3d target;
+        public SimpleTargetEvaluator( Vector3d t) { this.target = t; }
+
+        @Override
+        public boolean isGoalReached(
+            Ref<EntityStore> ref, AStarBase aStarBase, AStarNode node, MotionController mc, ComponentAccessor<EntityStore> ca
+        ) {
+            var nodePos = node.getPosition();
+            var dx = nodePos.x - target.x;
+            var dy = nodePos.y - target.y;
+            var dz = nodePos.z - target.z;
+            return dx < 2 && dy < 2 && dz < 2;
+        }
+
+        @Override
+        public float estimateToGoal(AStarBase aStarBase, Vector3d pos, MotionController mc) {
+            return (float) pos.distanceTo(target);
+        }
+    }
+    public enum PathfindErrorType {
+        OPEN_NODE_LIMIT_EXCEEDED,
+        TOTAL_NODE_LIMIT_EXCEEDED,
+        UNKNOWN
+    }
+
+    public static class PathfindError extends RuntimeException {
+        
+        public final PathfindErrorType type;
+        public final Vector3d startPos;
+        public final Vector3d targetPos;
+        public final int openNodeCount;
+        public final int totalNodeCount;
+
+        public PathfindError(PathfindErrorType type, Vector3d startPos, Vector3d targetPos, int openNodeCount, int totalNodeCount) {
+            super(String.format("Pathfind error: %s (Start: %s, Target: %s, OpenNodes: %d, TotalNodes: %d)", type, startPos, targetPos, openNodeCount, totalNodeCount));
+            this.type = type;
+            this.startPos = startPos;
+            this.targetPos = targetPos;
+            this.openNodeCount = openNodeCount;
+            this.totalNodeCount = totalNodeCount;
+        }
+    }
+
+    public static boolean multiVillageZonePathFindTo(
+        HousedNpcEntity housedNpc, Store<EntityStore> store, org.joml.Vector3d current_pos, org.joml.Vector3d target_pos,
+        Ref<EntityStore> entityRef, HeadRotation headRotation, CommandBuffer<EntityStore> cb, NPCEntity npc
+    
+    ) {
+        do {
+            var dx = current_pos.x - target_pos.x;
+            if (dx > 2 || dx < -2) break;
+            var dy = current_pos.y - target_pos.y;
+            if (dy > 2 || dy < -2) break;
+            var dz = current_pos.z - target_pos.z;
+            if (dz > 2 || dz < -2) break;
+            housedNpc.setTargetPos((Vector3i) null);
+            return true;
+        } while (false);
+
+        if (housedNpc.getTargetPos() == null && housedNpc.getPathQueue().isEmpty()) {
+            var currentZone = VillageZoneGraph.getNearestVillageZone(current_pos, store);
+            var targetZone = VillageZoneGraph.getNearestVillageZone(target_pos, store);
+            var pathZone = VillageZoneGraph.getShortestPath(currentZone, targetZone, store);
+            // pathZone.removeLast(); // We remove the last node to avoid pathfinding through the middle of the last VillageZone
+            housedNpc.setPathQueue(pathZone);
+        }
+        if (housedNpc.getTargetPos() == null) {
+            var queue = housedNpc.getPathQueue();
+            // We skip last zone to pathfind straight to the target position
+            if (queue.size() > 1) {
+                var villageZone = VillageZoneManager.getVillageZone(store, queue.poll());
+                housedNpc.setTargetPos(JomlUtils.toHytale(villageZone.center));
+            } else {
+                housedNpc.setTargetPos(JomlUtils.toHytale(target_pos));
+            }
+            
+        }
+        
+        var tPos = housedNpc.getTargetPos();
+        
+        var actualTarget = new Vector3d(tPos.x + 0.5, tPos.y, tPos.z + 0.5);
+        var pathSession = housedNpc.getPathSession();
+        pathSession.world = store.getExternalData().getWorld();
+        var provider = store.getResource(AStarNodePoolProviderSimple.getResourceType());
+        pathfindTo(npc, pathSession, provider, store, tPos, JomlUtils.toHytale(current_pos), entityRef, actualTarget, headRotation, cb);
+
+        do {
+            var dx = current_pos.x - target_pos.x;
+            if (dx > 2 || dx < -2) break;
+            var dy = current_pos.y - target_pos.y;
+            if (dy > 2 || dy < -2) break;
+            var dz = current_pos.z - target_pos.z;
+            if (dz > 2 || dz < -2) break;
+            housedNpc.setTargetPos((Vector3i) null);
+        } while (false);
+        return false;
+    }
+
+    public static void pathfindTo(
+        NPCEntity npc, HousedNpcPathSession session, AStarNodePoolProvider provider,  Store<EntityStore> store,
         Vector3i pos_target_vector3i, Vector3d pos_current, Ref<EntityStore> entityRef, Vector3d pos_target,
         HeadRotation headRotation, CommandBuffer<EntityStore> cb
     ) {
-        var npcRole = npc.getRole();
         // if (npcRole == null) return;
         var motionController = npc.getRole().getActiveMotionController();
         // if (motionController == null) return;
@@ -46,7 +152,7 @@ public class HousedNpcPathfinder {
         ) {
             
             
-            java.util.List<Vector3i> openedDoors = openDoorsBeforePathing(session.world, pos_current, pos_target);
+            var openedDoors = openDoorsBeforePathing(session.world, pos_current, pos_target);
 
             // session.aStar -> AStarWithTarget
             if (session.currentTarget == null || !session.currentTarget.equals(pos_target_vector3i) ) {
@@ -64,7 +170,13 @@ public class HousedNpcPathfinder {
             }
             
             var node = session.aStar.getPath();
-            if (node == null && session.aStar.getProgress().equals(Progress.ACCOMPLISHED)) {
+            var progress = session.aStar.getProgress();
+            if (progress.equals(Progress.TERMINATED_OPEN_NODE_LIMIT_EXCEEDED)) {
+                throw new PathfindError(PathfindErrorType.OPEN_NODE_LIMIT_EXCEEDED, pos_current, pos_target, session.aStar.getOpenCount(), session.aStar.getVisitedBlocks().size());
+            } else if (progress.equals(Progress.TERMINATED_TOTAL_NODE_LIMIT_EXCEEDED)) {
+                throw new PathfindError(PathfindErrorType.TOTAL_NODE_LIMIT_EXCEEDED, pos_current, pos_target, session.aStar.getOpenCount(), session.aStar.getVisitedBlocks().size());
+            }
+            if (node == null && progress.equals(Progress.ACCOMPLISHED)) {
                 
                 session.aStar.buildBestPath(AStarNode::getEstimateToGoal, (oldV, v) -> v < oldV, Float.MAX_VALUE);
                 node = session.aStar.getPath();
@@ -90,119 +202,47 @@ public class HousedNpcPathfinder {
             session.pathFollower.updateCurrentTarget(pos_current, motionController);
             session.pathFollower.executePath(pos_current, motionController, npc.getRole().getBodySteering());
         }
-        this.handleDoor(session, pos_current, cb);
+        handleDoor(session, pos_current, cb);
     }
 
     // region door ignore pathfinder
 
-    private static it.unimi.dsi.fastutil.ints.IntOpenHashSet doorBlockIds = null;
-
-    private static void initDoorBlockIdsIfNeeded() {
-        if (doorBlockIds != null) return;
-        doorBlockIds = new IntOpenHashSet();
-        var map = BlockType.getAssetMap();
-        for (var entry : map.getAssetMap().entrySet()) {
-            if (entry.getKey().toLowerCase().contains("door")) {
-                int index = map.getIndex(entry.getKey());
-                if (index >= 0) doorBlockIds.add(index);
-            }
-        }
-    }
-
-
-    private java.util.List<Vector3i> openDoorsBeforePathing(World world, Vector3d start, Vector3d end) {
+    private static List<Vector3i> openDoorsBeforePathing(World world, Vector3d start, Vector3d end) {
         var openedDoors = new ArrayList<Vector3i>();
         if (world == null) return openedDoors;
-        
-        initDoorBlockIdsIfNeeded();
 
-        final var offset = 15;
+        int startCX = ((int) Math.floor(start.x)) >> 5;
+        int startCZ = ((int) Math.floor(start.z)) >> 5;
 
-        int minX = (int) Math.floor(Math.min(start.x, end.x)) - offset;
-        int maxX = (int) Math.floor(Math.max(start.x, end.x)) + offset;
-        int minY = (int) Math.floor(Math.min(start.y, end.y)) - offset;
-        int maxY = (int) Math.floor(Math.max(start.y, end.y)) + offset;
-        int minZ = (int) Math.floor(Math.min(start.z, end.z)) - offset;
-        int maxZ = (int) Math.floor(Math.max(start.z, end.z)) + offset;
-
-        // Cap to reasonable limits if path is too long to prevent gigantic lag spikes
-        if (maxX - minX > 150 || maxZ - minZ > 150) return openedDoors; 
-
-        int minCX = minX >> 5;
-        int maxCX = maxX >> 5;
-        int minCZ = minZ >> 5;
-        int maxCZ = maxZ >> 5;
-        int minCY = Math.max(0, minY >> 5);
-        int maxCY = Math.min(9, maxY >> 5);
+        int minCX = startCX - 4;
+        int maxCX = startCX + 4;
+        int minCZ = startCZ - 4;
+        int maxCZ = startCZ + 4;
 
         for (int cx = minCX; cx <= maxCX; cx++) {
             for (int cz = minCZ; cz <= maxCZ; cz++) {
-                for (int cy = minCY; cy <= maxCY; cy++) {
-                    var sectionRef = world.getChunkStore().getChunkSectionReferenceAtBlock(cx << 5, cy << 5, cz << 5);
-                    if (sectionRef == null) continue;
-                    var section = world.getChunkStore().getStore().getComponent(sectionRef, com.hypixel.hytale.server.core.universe.world.chunk.section.BlockSection.getComponentType());
-                    if (section == null) continue;
+                long chunkIndex = ChunkUtil.indexChunk(cx, cz);
+                var doors = DoorTracker.getDoorsInChunk(chunkIndex);
+                if (doors == null || doors.isEmpty()) continue;
 
-                    boolean hasDoor = false;
-                    it.unimi.dsi.fastutil.ints.IntIterator chunkIt = section.getChunkSection().values().iterator();
-                    while (chunkIt.hasNext()) {
-                        if (doorBlockIds.contains(chunkIt.nextInt())) {
-                            hasDoor = true;
-                            break;
-                        }
-                    }
-                    if (!hasDoor) continue;
-
-                    int sMinX = Math.max(minX, cx << 5);
-                    int sMaxX = Math.min(maxX, (cx << 5) + 31);
-                    int sMinY = Math.max(minY, cy << 5);
-                    int sMaxY = Math.min(maxY, (cy << 5) + 31);
-                    int sMinZ = Math.max(minZ, cz << 5);
-                    int sMaxZ = Math.min(maxZ, (cz << 5) + 31);
-
-                    for (int x = sMinX; x <= sMaxX; x++) {
-                        for (int y = sMinY; y <= sMaxY; y++) {
-                            for (int z = sMinZ; z <= sMaxZ; z++) {
-                                int localX = x & 31;
-                                int localY = y & 31;
-                                int localZ = z & 31;
-
-                                int blockId = section.get(localX, localY, localZ);
-                                if (doorBlockIds.contains(blockId)) {
-                                    Vector3i pos = new Vector3i(x, y, z);
-                                    int filler = section.getFiller(localX, localY, localZ);
-                                    if (filler != 0) {
-                                        pos = new Vector3i(
-                                            x - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackX(filler),
-                                            y - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackY(filler),
-                                            z - com.hypixel.hytale.server.core.util.FillerBlockUtil.unpackZ(filler)
-                                        );
-                                    }
-
-                                    var block = MyBlockUtils.getSafeBlockType(world, pos);
-                                    if (block != null) {
-                                        var state = block.getStateForBlock(block);
-                                        boolean isOpen = state != null && state.contains("OpenDoor");
-                                        if (!isOpen) {
-                                            setSilentBlockInteractionState(world, pos, block, "OpenDoorIn");
-                                            if (!openedDoors.contains(pos)) {
-                                                openedDoors.add(pos);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                for (var pos : doors) {
+                    var block = MyBlockUtils.getSafeBlockType(world, pos);
+                    if (block == null) continue;
+                    var state = block.getStateForBlock(block);
+                    var isOpen = state != null && state.contains("OpenDoor");
+                    if (isOpen) continue;
+                    
+                    setSilentBlockInteractionState(world, pos, block, "OpenDoorIn");
+                    openedDoors.add(pos);
                 }
             }
         }
         return openedDoors;
     }
 
-    private void restoreDoorsAfterPathing(World world, java.util.List<Vector3i> doorsToClose) {
+    private static void restoreDoorsAfterPathing(World world, List<Vector3i> doorsToClose) {
         if (world == null || doorsToClose.isEmpty()) return;
-        for (Vector3i pos : doorsToClose) {
+        for (var pos : doorsToClose) {
             var block = MyBlockUtils.getSafeBlockType(world, pos);
             if (block != null) {
                 setSilentBlockInteractionState(world, pos, block, "CloseDoorIn");
@@ -210,14 +250,20 @@ public class HousedNpcPathfinder {
         }
     }
 
-    private void setSilentBlockInteractionState(World world, Vector3i pos, BlockType blockType, String state) {
+    private static void setSilentBlockInteractionState(World world, Vector3i pos, BlockType blockType, String state) {
         if (blockType.getData() == null) return;
         var chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(pos.x, pos.z));
         if (chunk == null) return;
         var newState = blockType.getBlockForState(state);
         if (newState == null) return;
-        var currentRotation = chunk.getRotationIndex(pos.x, pos.y, pos.z);
-        var section = chunk.getBlockChunk().getSectionAtBlockY(pos.y);
+        var chunkStore = world.getChunkStore();
+        var sectionRef = chunkStore.getChunkSectionReferenceAtBlock(pos.x, pos.y, pos.z);
+        if (sectionRef == null) return;
+        var section = chunkStore.getStore().getComponent(sectionRef, BlockSection.getComponentType());
+        if (section == null) return;
+        
+        var currentRotation = section.getRotationIndex(pos.x & 31, pos.y & 31, pos.z & 31);
+        
         var wasLoaded = section.loaded;
         section.loaded = false;
         try {
@@ -236,7 +282,7 @@ public class HousedNpcPathfinder {
 
     // region move door opening
 
-    public void handleDoor(HousedNpcPathSession session, Vector3d pos, CommandBuffer<EntityStore> cb) {
+    public static void handleDoor(HousedNpcPathSession session, Vector3d pos, CommandBuffer<EntityStore> cb) {
         if (session.world == null) return;
         
         var currentWaypoint = session.pathFollower.getCurrentWaypoint();
@@ -288,16 +334,16 @@ public class HousedNpcPathfinder {
         }
     }
 
-    private boolean openDoor(World world, Vector3i pos, CommandBuffer<EntityStore> cb) {
+    private static boolean openDoor(World world, Vector3i pos, CommandBuffer<EntityStore> cb) {
         return interactDoor(world, pos, true, cb);
     }
 
-    private boolean closeDoor(World world, Vector3i pos, CommandBuffer<EntityStore> cb) {
+    private static boolean closeDoor(World world, Vector3i pos, CommandBuffer<EntityStore> cb) {
         return interactDoor(world, pos, false, cb);
     }
 
 
-    private boolean interactDoor(World world, Vector3i pos, boolean open, CommandBuffer<EntityStore> cb) {
+    private static boolean interactDoor(World world, Vector3i pos, boolean open, CommandBuffer<EntityStore> cb) {
         if (world == null) return false;
         var chunk = world.getChunkIfInMemory(com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(pos.x, pos.z));
         if (chunk == null || chunk.getBlockChunk() == null) return false;
@@ -341,7 +387,7 @@ public class HousedNpcPathfinder {
 
     // region prevent back tracking
 
-    private AStarNode preventBacktracking(AStarNode head, Vector3d npcPos) {
+    private static AStarNode preventBacktracking(AStarNode head, Vector3d npcPos) {
         if (head == null || head.next() == null) {
             return head;
         }

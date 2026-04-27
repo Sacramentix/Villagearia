@@ -1,9 +1,10 @@
 package villagearia.ai;
 
-import com.hypixel.hytale.math.util.ChunkUtil;
+import java.util.ArrayList;
+import java.util.List;
+
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3i;
-import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.npc.movement.controllers.MotionController;
 import com.hypixel.hytale.server.npc.movement.controllers.ProbeMoveData;
@@ -64,11 +65,11 @@ public class HousedNpcPathSession {
     public long lastComputeTime = 0;
     // recompute path after milliseconds
     public long recomputeAfterMs = 3000;
-    public java.util.List<Vector3i> recentlyOpenedDoors = new java.util.ArrayList<>();
+    public List<Vector3i> recentlyOpenedDoors = new ArrayList<>();
 
     public HousedNpcPathSession() {
-        aStar.setTotalNodesLimit(25_000);
-        aStar.setOpenNodesLimit(5000);
+        aStar.setTotalNodesLimit(500_000);
+        aStar.setOpenNodesLimit(10_000);
         aStar.setMaxPathLength(500); // 500 blocks straight depth max limit
         pathFollower.setRelativeSpeed(0.4);
         pathFollower.setRelativeSpeedWaypoint(0.4);

@@ -1,7 +1,58 @@
 plugins {
     java
+    jacoco
     eclipse
     idea
+}
+
+jacoco {
+    toolVersion = "0.8.14" // Use latest JaCoCo to support newer Java versions
+}
+
+// 1. Create a specific task for running the server with coverage
+tasks.register<JavaExec>("runServerWithCoverage") {
+    group = "Hytale"
+    description = "Runs the devserver with JaCoCo coverage enabled, use -Ddebug for opening a debugger."
+    
+    // Copy the configuration from the original runServer task
+    val rs = tasks.named<JavaExec>("runServer").get()
+    mainClass.set(rs.mainClass)
+    classpath = rs.classpath
+    args = rs.args
+    jvmArgs = rs.jvmArgs
+    workingDir = rs.workingDir
+    standardInput = System.`in`
+
+    // Apply the Jacoco agent to this specific task
+    jacoco.applyTo(this)
+    extensions.configure<JacocoTaskExtension>("jacoco") {
+        isEnabled = true
+        destinationFile = layout.buildDirectory.file("jacoco/runServerWithCoverage.exec").get().asFile
+    }
+}
+
+tasks.named<JavaExec>("runServer") {
+    standardInput = System.`in`
+}
+
+// 2. Create a custom task to generate the report from the new coverage task.
+tasks.register<JacocoReport>("jacocoServerReport") {
+    group = "verification"
+    description = "Generates a JaCoCo coverage report from the runServerWithCoverage execution data."
+    
+    val execFile = layout.buildDirectory.file("jacoco/runServerWithCoverage.exec").get().asFile
+    
+    onlyIf { execFile.exists() }
+    
+    executionData(execFile)
+    sourceSets(sourceSets.main.get())
+    
+    reports {
+        xml.required.set(false)
+        csv.required.set(false)
+        html.required.set(true)
+        html.outputLocation.set(layout.buildDirectory.dir("jacocoHtmlServer"))
+    }
 }
 
 repositories {

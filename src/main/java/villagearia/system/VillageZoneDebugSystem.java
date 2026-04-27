@@ -1,20 +1,16 @@
 package villagearia.system;
 
-import javax.annotation.Nonnull;
-
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.tick.TickingSystem;
-import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.modules.debug.DebugUtils;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
-import villagearia.Villagearia;
 import villagearia.ai.HousedNpcEntity;
-import villagearia.component.VillageZone;
-import villagearia.component.VillageZoneResource;
+import villagearia.resource.VillageZoneStore;
 import villagearia.utils.JomlUtils;
 
 public class VillageZoneDebugSystem extends TickingSystem<EntityStore> {
@@ -23,20 +19,17 @@ public class VillageZoneDebugSystem extends TickingSystem<EntityStore> {
         super();
     }
 
-    @SuppressWarnings("null")
+    
     @Override
     public void tick(
         float dt,
         int index,
-        @Nonnull Store<EntityStore> store
+         Store<EntityStore> store
     ) {
         var world = store.getExternalData().getWorld();
+        var villageZoneStore = store.getResource(VillageZoneStore.getResourceType());
         
-        var villageZoneResourceType = Villagearia.getInstance().getVillageZoneResourceType();
-        var resource = (VillageZoneResource) world.getEntityStore().getStore().getResource(villageZoneResourceType);
-        if (resource == null) return;
-        
-        for (var entry : resource.getZones().entrySet()) {
+        for (var entry : villageZoneStore.getZones().entrySet()) {
             var villageZone = entry.getValue();
             var radius = villageZone.getRadius();
             var pos    = JomlUtils.toHytale(villageZone.center);

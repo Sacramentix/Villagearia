@@ -1,8 +1,11 @@
 package villagearia.component;
 
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.hypixel.hytale.codec.Codec;
@@ -10,17 +13,13 @@ import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.Component;
 import com.hypixel.hytale.component.ComponentType;
+import com.hypixel.hytale.math.util.ChunkUtil;
+import com.hypixel.hytale.math.vector.Vector3i;
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.BlockComponentChunk;
 import com.hypixel.hytale.server.core.universe.world.meta.state.RespawnBlock;
-import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import com.hypixel.hytale.math.util.ChunkUtil;
-import java.util.stream.IntStream;
-import com.hypixel.hytale.math.vector.Vector3i;
-import java.util.stream.Stream;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import villagearia.Villagearia;
 
@@ -29,7 +28,7 @@ import villagearia.Villagearia;
  */
 public class PropertyDeed implements Component<EntityStore> {
 
-    @Nonnull
+    
     public static final BuilderCodec<PropertyDeed> CODEC = BuilderCodec.builder(
             PropertyDeed.class, PropertyDeed::new
         )

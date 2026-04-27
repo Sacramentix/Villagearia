@@ -1,14 +1,10 @@
 package villagearia.interaction;
 
-import java.util.function.BiConsumer;
-
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.hypixel.hytale.codec.builder.BuilderCodec;
-import com.hypixel.hytale.component.ArchetypeChunk;
-import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Vector3d;
@@ -18,41 +14,41 @@ import com.hypixel.hytale.protocol.InteractionState;
 import com.hypixel.hytale.protocol.InteractionType;
 import com.hypixel.hytale.protocol.WaitForDataFrom;
 import com.hypixel.hytale.server.core.entity.InteractionContext;
-import com.hypixel.hytale.server.core.modules.entity.component.NPCMarkerComponent;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.CooldownHandler;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.SimpleInstantInteraction;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
+import villagearia.ai.HousedNpcEntity;
 import villagearia.component.PropertyDeed;
 import villagearia.component.PropertyDeedRef;
-import villagearia.ai.HousedNpcEntity;
+import villagearia.resource.manager.PropertyDeedManager;
 
 public class GivePropertyDeedFilled extends SimpleInstantInteraction {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
-    @Nonnull
+    
     public static final BuilderCodec<GivePropertyDeedFilled> CODEC = BuilderCodec.builder(
             GivePropertyDeedFilled.class, GivePropertyDeedFilled::new
         )
         .build();
 
-    public GivePropertyDeedFilled(@Nonnull String id) {
+    public GivePropertyDeedFilled( String id) {
         super(id);
     }
 
     protected GivePropertyDeedFilled() {
     }
 
-    @Nonnull
+    
     @Override
     public WaitForDataFrom getWaitForDataFrom() {
         return WaitForDataFrom.Client;
     }
 
-    @Nonnull
+    
     @Override
     protected com.hypixel.hytale.protocol.Interaction generatePacket() {
         return new com.hypixel.hytale.protocol.UseEntityInteraction();
@@ -68,17 +64,16 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
         return true;
     }
 
-    @Nonnull
+    
     @Override
     public String toString() {
         return "GivePropertyDeedFilled{} " + super.toString();
     }
 
-    @SuppressWarnings({"removal", "null"})
     @Override
     protected void firstRun(
-        @Nonnull InteractionType interactionType, @Nonnull InteractionContext ctx,
-        @Nonnull CooldownHandler cooldownHandler
+         InteractionType interactionType,  InteractionContext ctx,
+         CooldownHandler cooldownHandler
     ) {
         var clientState = ctx.getClientState();
         if (clientState == null) {
@@ -87,27 +82,26 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
         }
 
         var entityId = clientState.entityId;
-        var commandBuffer = ctx.getCommandBuffer();
+        var cb = ctx.getCommandBuffer();
 
-        if (commandBuffer == null) {
+        if (cb == null) {
             ctx.getState().state = InteractionState.Failed;
             return;
         }
 
-        var world = commandBuffer.getStore().getExternalData().getWorld();
+        var world = cb.getStore().getExternalData().getWorld();
 
-        var targetRef = commandBuffer.getStore().getExternalData().getRefFromNetworkId(entityId);
+        var targetRef = cb.getStore().getExternalData().getRefFromNetworkId(entityId);
         if (targetRef == null || !targetRef.isValid()) {
             ctx.getState().state = InteractionState.Failed;
             return;
         }
 
-        // Check if the target is an NPC
-        var npcMarkerType = NPCMarkerComponent.getComponentType();
-        if (npcMarkerType == null || !commandBuffer.getStore().getArchetype(targetRef).contains(npcMarkerType)) {
-            ctx.getState().state = InteractionState.Failed;
-            return;
-        }
+        // // Check if the target is an NPC
+        // if (!cb.getStore().getArchetype(targetRef).contains(NPCMarkerComponent.getComponentType())) {
+        //     ctx.getState().state = InteractionState.Failed;
+        //     return;
+        // }
 
         var itemInHand = ctx.getHeldItem();
         if (itemInHand == null) {
@@ -121,7 +115,7 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
             return;
         }
 
-        var deed = getPropertyDeedFromRef(world, deedRef);
+        var deed = getPropertyDeedFromRef(cb.getStore(), deedRef);
         if (deed == null) {
             ctx.getState().state = InteractionState.Failed;
             return;
@@ -133,9 +127,7 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
             return;
         }
 
-        var aiType = villagearia.Villagearia.instance().getAiHousedNpcComponentType();
-        var safeAiType = aiType;
-        commandBuffer.addComponent(targetRef, safeAiType, new HousedNpcEntity(bedPos, deedRef.getVillageZoneUuid()));
+        cb.addComponent(targetRef, HousedNpcEntity.getComponentType(), new HousedNpcEntity(bedPos, deedRef.getVillageZoneUuid()));
         
         teleportNPCToBed(world, targetRef, bedPos);
 
@@ -152,15 +144,17 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
     
 
     @Nullable
-    @SuppressWarnings("null")
-    private PropertyDeed getPropertyDeedFromRef(World world, PropertyDeedRef deedRef) {
+    
+    private PropertyDeed getPropertyDeedFromRef(Store<EntityStore> store, PropertyDeedRef deedRef) {
         if (deedRef.getPosition() == null || deedRef.getVillageZoneUuid() == null) return null;
         LOGGER.atInfo().log("START getPropertyDeedFromRef");
         LOGGER.atInfo().log("deedRef " + deedRef.getPosition().toString());
-        var propertyDeed = villagearia.PropertyDeedManager.getPropertyDeed(world, deedRef.getVillageZoneUuid());
+        var propertyDeed = PropertyDeedManager.getPropertyDeed(store, deedRef.getVillageZoneUuid());
         LOGGER.atInfo().log("END getPropertyDeedFromRef");
         return propertyDeed;
-    }    private void teleportNPCToBed(World world, Ref<EntityStore> targetRef, Vector3i bedPos) {
+    }
+    
+    private void teleportNPCToBed(World world, Ref<EntityStore> targetRef, Vector3i bedPos) {
         var targetPos = new Vector3d(bedPos.x + 0.5, bedPos.y + 1, bedPos.z + 0.5);
         var targetRot = new Vector3f(0f, 0f, 0f);
 
@@ -168,13 +162,11 @@ public class GivePropertyDeedFilled extends SimpleInstantInteraction {
         var chunkZ     = ChunkUtil.chunkCoordinate(targetPos.getZ());
         var chunkIndex = ChunkUtil.indexChunk(chunkX, chunkZ);
 
-        var teleportType = Teleport.getComponentType();
-
         world.getChunkStore().getChunkReferenceAsync(chunkIndex).thenAcceptAsync(chunkRef -> {
             if (!targetRef.isValid()) return;
             world.getEntityStore().getStore().addComponent(
                 targetRef, 
-                teleportType, 
+                Teleport.getComponentType(), 
                 new Teleport(world, targetPos, targetRot)
             );
         }, world);

@@ -12,6 +12,15 @@
         },
         {
             "type": "java",
+            "name": "Launch Hytale Server with coverage & Attach",
+            "request": "attach",
+            "hostName": "localhost",
+            "port": 5005,
+            "preLaunchTask": "Run Hytale Server with coverage (Debug)",
+            "sourcePaths": ["${workspaceFolder}/src/main/java"]
+        },
+        {
+            "type": "java",
             "name": "Attach to Hytale Server",
             "request": "attach",
             "hostName": "localhost",

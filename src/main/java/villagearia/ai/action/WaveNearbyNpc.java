@@ -1,7 +1,5 @@
 package villagearia.ai.action;
 
-import javax.annotation.Nonnull;
-
 import com.hypixel.hytale.builtin.mounts.MountedComponent;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
@@ -9,6 +7,7 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3f;
+import com.hypixel.hytale.protocol.AnimationSlot;
 import com.hypixel.hytale.server.core.entity.AnimationUtils;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
 import com.hypixel.hytale.server.core.modules.entity.component.HeadRotation;
@@ -16,7 +15,6 @@ import com.hypixel.hytale.server.core.modules.entity.component.TransformComponen
 import com.hypixel.hytale.server.core.modules.time.WorldTimeResource;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.protocol.AnimationSlot;
 
 import villagearia.ai.HousedNpcEntity;
 
@@ -30,7 +28,7 @@ public class WaveNearbyNpc {
     private static final double GREET_ANIMATION_LOCKED_SECONDS = 2.0;
 
     public static record WaveNearbyNpcContext(
-        @Nonnull
+        
         Ref<EntityStore> meRef,
         HousedNpcEntity housedNpc,
         WorldTimeResource worldTime,
@@ -38,7 +36,7 @@ public class WaveNearbyNpc {
         HeadRotation headRotation,
         Vector3d myPos,
         Store<EntityStore> store,
-        @Nonnull
+        
         CommandBuffer<EntityStore> cb
     ) {}
 
@@ -55,8 +53,7 @@ public class WaveNearbyNpc {
         
         if (worldTime == null) return false;
         
-        var mountedType = com.hypixel.hytale.builtin.mounts.MountedComponent.getComponentType();
-        if (mountedType != null && store.getComponent(meRef, mountedType) != null) {
+        if (store.getComponent(meRef, MountedComponent.getComponentType()) != null) {
             return false; // Skip waving entirely if sitting, as full-body action animations break the sit posture.
         }
         
@@ -71,15 +68,13 @@ public class WaveNearbyNpc {
             var timeSinceGreet = currentTimeSeconds - housedNpc.lastGreetTime;
             if (timeSinceGreet < GREET_ANIMATION_LOCKED_SECONDS) {
                 // Find the other NPC's location and stare at them
-                var uuidCompType = UUIDComponent.getComponentType();
-                var transformCompType = TransformComponent.getComponentType();
                 
-                var query = Query.and(uuidCompType, transformCompType);
+                var query = Query.and(UUIDComponent.getComponentType(), TransformComponent.getComponentType());
                 store.forEachChunk(query, (chunk, chunkCb) -> {
                     for (var i = 0; i < chunk.size(); i++) {
-                        var uuid = chunk.getComponent(i, uuidCompType).getUuid();
+                        var uuid = chunk.getComponent(i, UUIDComponent.getComponentType()).getUuid();
                         if (!uuid.equals(housedNpc.lastGreetedNpc)) continue;
-                        var targetTransform = chunk.getComponent(i, transformCompType);
+                        var targetTransform = chunk.getComponent(i, TransformComponent.getComponentType());
                         rotateTowards(ctx, targetTransform.getPosition());
                         break;
                     }
@@ -98,12 +93,11 @@ public class WaveNearbyNpc {
             }
         }
 
-        var aiType = HousedNpcEntity.getComponentType();
-        var transformType = TransformComponent.getComponentType();
-        var uuidType = UUIDComponent.getComponentType();
-
-        // 2) optimized spatial check by chunk querying other housed NPCs
-        var query = com.hypixel.hytale.component.query.Query.and(aiType, transformType, uuidType);
+        var query = Query.and(
+            HousedNpcEntity.getComponentType(),
+            TransformComponent.getComponentType(),
+            UUIDComponent.getComponentType()
+        );
         
         // We use a mutable container to break out early
         var hasJustStartedGreeting = new boolean[]{false};
@@ -117,31 +111,28 @@ public class WaveNearbyNpc {
                 // Skip self
                 if (otherRef.getIndex() == meRef.getIndex()) continue; 
 
-                var otherTransform = chunk.getComponent(i, transformType);
+                var otherTransform = chunk.getComponent(i, TransformComponent.getComponentType());
                 if (otherTransform == null) continue;
 
                 // Basic distance check
                 var distSq = myPos.distanceSquaredTo(otherTransform.getPosition());
                 if (distSq < GREET_RADIUS_SQ) {
-                    var npcCompType = com.hypixel.hytale.server.npc.entities.NPCEntity.getComponentType();
-                    if (npcCompType != null) {
-                        var myNpc = store.getComponent(meRef, npcCompType);
-                        var theirNpc = chunk.getComponent(i, npcCompType);
+                    var myNpc = store.getComponent(meRef, NPCEntity.getComponentType());
+                    var theirNpc = chunk.getComponent(i, NPCEntity.getComponentType());
 
-                        if (myNpc != null && myNpc.getRole() != null && theirNpc != null) {
-                            try {
-                                var role = myNpc.getRole();
-                                if (role != null) {
-                                    var canSee = role.getPositionCache().hasLineOfSight(meRef, otherRef, store);
-                                    if (!canSee) continue; // Blocked by wall
-                                }
-                            } catch (Exception e) {
-                                // If position cache is not ready, skip checking or gracefully fail
+                    if (myNpc != null && myNpc.getRole() != null && theirNpc != null) {
+                        try {
+                            var role = myNpc.getRole();
+                            if (role != null) {
+                                var canSee = role.getPositionCache().hasLineOfSight(meRef, otherRef, store);
+                                if (!canSee) continue; // Blocked by wall
                             }
+                        } catch (Exception e) {
+                            // If position cache is not ready, skip checking or gracefully fail
                         }
                     }
 
-                    var uuidComp = chunk.getComponent(i, uuidType);
+                    var uuidComp = chunk.getComponent(i, UUIDComponent.getComponentType());
                     if (uuidComp == null) continue;
 
                     var otherUuid = uuidComp.getUuid();
@@ -174,27 +165,22 @@ public class WaveNearbyNpc {
         var dx = (float)(targetPos.x - myPos.x);
         var dy = (float)(targetPos.y - myPos.y);
         var dz = (float)(targetPos.z - myPos.z);
-        var dist = (float)Math.sqrt(dx*dx + dz*dz);
-        var pitch = (float)Math.atan2(dy, dist);
-        var yaw = (float)Math.atan2(-dx, -dz);
+        var dist  = (float) Math.sqrt(dx*dx + dz*dz);
+        var pitch = (float) Math.atan2(dy, dist);
+        var yaw   = (float) Math.atan2(-dx, -dz);
         
         var store = ctx.store();
         var meRef = ctx.meRef();
         
-        var mountedType = MountedComponent.getComponentType();
-        var isMounted = mountedType != null && store.getComponent(meRef, mountedType) != null;
-        
-        var npcCompType = NPCEntity.getComponentType();
-        var myNpc = store.getComponent(meRef, npcCompType);
-        if (myNpc != null) {
-            var role = myNpc.getRole();
-            if (role != null) {
-                if (!isMounted) {
-                    role.getBodySteering().setYaw(yaw).setPitch(0.0f);
-                }
-                role.getHeadSteering().setYaw(yaw).setPitch(pitch);
-                return;
+        var isMounted = store.getComponent(meRef, MountedComponent.getComponentType()) != null;
+        var myNpc = store.getComponent(meRef, NPCEntity.getComponentType());
+        var role = myNpc.getRole();
+        if (role != null) {
+            if (!isMounted) {
+                role.getBodySteering().setYaw(yaw).setPitch(0.0f);
             }
+            role.getHeadSteering().setYaw(yaw).setPitch(pitch);
+            return;
         }
         
         var targetRot = new Vector3f(pitch, yaw, 0.0f);

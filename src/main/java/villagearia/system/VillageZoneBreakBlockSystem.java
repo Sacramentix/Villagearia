@@ -1,6 +1,8 @@
 package villagearia.system;
 
-import javax.annotation.Nonnull;
+import java.util.ArrayList;
+import java.util.UUID;
+
 import javax.annotation.Nullable;
 
 import com.hypixel.hytale.component.Archetype;
@@ -10,27 +12,18 @@ import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.EntityEventSystem;
 import com.hypixel.hytale.math.vector.Vector3d;
+import com.hypixel.hytale.protocol.Vector3i;
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.event.events.ecs.BreakBlockEvent;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
-import com.hypixel.hytale.logger.HytaleLogger;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-import villagearia.component.VillageZone;
-import villagearia.component.VillageZoneResource;
+import villagearia.resource.VillageZoneStore;
+import villagearia.resource.manager.VillageZoneManager;
 
 public class VillageZoneBreakBlockSystem extends EntityEventSystem<EntityStore, BreakBlockEvent> {
 
-    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-
-    private Query<EntityStore> villageZoneQuery;;
-
     public VillageZoneBreakBlockSystem() {
         super(BreakBlockEvent.class);
-        villageZoneQuery = VillageZone.getComponentType();
     }
 
     @Nullable
@@ -39,17 +32,18 @@ public class VillageZoneBreakBlockSystem extends EntityEventSystem<EntityStore, 
         return Archetype.empty();
     }
 
-    @SuppressWarnings("null")
+    
     @Override
     public void handle(
         int index,
-        @Nonnull ArchetypeChunk<EntityStore> archetypeChunk,
-        @Nonnull Store<EntityStore> store,
-        @Nonnull CommandBuffer<EntityStore> commandBuffer,
-        @Nonnull BreakBlockEvent event
+        ArchetypeChunk<EntityStore> archetypeChunk,
+        Store<EntityStore> store,
+        CommandBuffer<EntityStore> commandBuffer,
+        BreakBlockEvent event
     ) {
 
         var brokenBlock = event.getTargetBlock();
+        
         var world = store.getExternalData().getWorld();
 
         // Find what the center of the broken block would be
@@ -68,27 +62,25 @@ public class VillageZoneBreakBlockSystem extends EntityEventSystem<EntityStore, 
         final double ecY = expectedCenterRaw.y + brokenBlock.getY();
         final double ecZ = expectedCenterRaw.z + brokenBlock.getZ();
 
-        List<UUID> toRemove = new ArrayList<>();
+        var villageZoneStore = store.getResource(VillageZoneStore.getResourceType());
+        var toRemove = new ArrayList<UUID>();
+        
+        for (var entry : villageZoneStore.getZones().entrySet()) {
+            var villageZone = entry.getValue();
+            var pos = villageZone.center;
 
-        var resource = (VillageZoneResource) world.getEntityStore().getStore().getResource(villagearia.Villagearia.getInstance().getVillageZoneResourceType());
-        if (resource != null) {
-            for (var entry : resource.getZones().entrySet()) {
-                var villageZone = entry.getValue();
-                var pos = villageZone.center;
+            var dx = pos.x - ecX;
+            if (dx > 0.1 || dx < -0.1) continue;
+            var dy = pos.y - ecY;
+            if (dy > 0.1 || dy < -0.1) continue;
+            var dz = pos.z - ecZ;
+            if (dz > 0.1 || dz < -0.1) continue;
 
-                var dx = pos.x - ecX;
-                if (dx > 0.1 || dx < -0.1) continue;
-                var dy = pos.y - ecY;
-                if (dy > 0.1 || dy < -0.1) continue;
-                var dz = pos.z - ecZ;
-                if (dz > 0.1 || dz < -0.1) continue;
+            toRemove.add(entry.getKey());
+        }
 
-                toRemove.add(entry.getKey());
-            }
-            
-            for (var id : toRemove) {
-                villagearia.VillageZoneManager.removeVillageZone(world.getEntityStore().getStore(), id);
-            }
+        for (var id : toRemove) {
+            VillageZoneManager.removeVillageZone(store, id);
         }
     }
 }

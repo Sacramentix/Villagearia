@@ -1,5 +1,6 @@
 package villagearia.ai;
 
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -7,7 +8,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.UUID;
 
-import javax.annotation.Nonnull;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
@@ -22,7 +22,7 @@ import villagearia.Villagearia;
 
 public class HousedNpcEntity implements Component<EntityStore> {
 
-    @Nonnull
+    
     public static final BuilderCodec<HousedNpcEntity> CODEC = BuilderCodec.builder(
             HousedNpcEntity.class, HousedNpcEntity::new
         )
@@ -31,16 +31,28 @@ public class HousedNpcEntity implements Component<EntityStore> {
         .append(new KeyedCodec<>("VillageZoneUuid", Codec.UUID_BINARY), (ai, val) -> ai.villageZoneUuid = val, ai -> ai.villageZoneUuid).add()
         .append(new KeyedCodec<>("TargetPos", Vector3i.CODEC), (ai, val) -> ai.targetPos = val, ai -> ai.targetPos).add()
         .append(new KeyedCodec<>("PathQueue", new ArrayCodec<>(Codec.UUID_BINARY, UUID[]::new)),
-            (ai, val) -> ai.pathQueue = (val == null ? new LinkedList<>() : new LinkedList<>(Arrays.asList(val))),
+            (ai, val) -> ai.pathQueue = (val == null ? new ArrayDeque<>() : new ArrayDeque<>(Arrays.asList(val))),
             ai -> ai.pathQueue == null ? new UUID[0] : ai.pathQueue.toArray(new UUID[0])).add()
         .build();
 
     private Vector3i homeBed;
     private UUID villageZoneUuid;
     private String state; // "NIGHT_SLEEP", "DAY_WANDER", "PATROLLING"
-    private int waitTicks;
     private Vector3i targetPos;
-    private Queue<UUID> pathQueue = new LinkedList<>();
+    private ArrayDeque<UUID> pathQueue = new ArrayDeque<>();
+    private int waitTicks = 0;
+
+    public int getWaitTicks() {
+        return waitTicks;
+    }
+
+    public void setWaitTicks(int waitTicks) {
+        this.waitTicks = waitTicks;
+    }
+
+    public void increaseWaitTicks() {
+        this.waitTicks++;
+    }
 
     // workDurationGoal as 24 hours ratio equivalent
     // Tell how much time a NPC aim to use for work related task
@@ -68,14 +80,12 @@ public class HousedNpcEntity implements Component<EntityStore> {
 
     public HousedNpcEntity() {
         this.state = "PATHING_RANDOM";
-        this.waitTicks = 0;
     }
 
     public HousedNpcEntity(Vector3i homeBed, UUID villageZoneUuid) {
         this.homeBed = homeBed;
         this.villageZoneUuid = villageZoneUuid;
         this.state = "PATHING_RANDOM";
-        this.waitTicks = 0;
     }
 
     public Vector3i getHomeBed() {
@@ -94,14 +104,6 @@ public class HousedNpcEntity implements Component<EntityStore> {
         this.state = state;
     }
 
-    public int getWaitTicks() {
-        return waitTicks;
-    }
-
-    public void setWaitTicks(int ticks) {
-        this.waitTicks = ticks;
-    }
-
     public Vector3i getTargetPos() {
         return targetPos;
     }
@@ -118,16 +120,12 @@ public class HousedNpcEntity implements Component<EntityStore> {
         return pathQueue;
     }
     
-    public void setPathQueue(Queue<UUID> pathQueue) {
+    public void setPathQueue(ArrayDeque<UUID> pathQueue) {
         this.pathQueue = pathQueue;
     }
 
     public UUID getVillageZoneUuid() {
         return villageZoneUuid;
-    }
-
-    public void increaseWaitTicks() {
-        this.waitTicks++;
     }
 
     public HousedNpcPathSession getPathSession() {
@@ -144,7 +142,7 @@ public class HousedNpcEntity implements Component<EntityStore> {
         cloned.setState(this.state);
         cloned.setWaitTicks(this.waitTicks);
         cloned.setTargetPos(this.targetPos);
-        cloned.setPathQueue(new LinkedList<>(this.pathQueue));
+        cloned.setPathQueue(new ArrayDeque<>(this.pathQueue));
         return cloned;
     }
 }

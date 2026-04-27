@@ -2,7 +2,6 @@ package villagearia.component;
 
 import java.util.UUID;
 
-import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.hypixel.hytale.codec.Codec;
@@ -20,7 +19,7 @@ import villagearia.Villagearia;
  */
 public class PropertyDeedRef implements Component<EntityStore> {
 
-    @Nonnull
+    
     public static final BuilderCodec<PropertyDeedRef> CODEC = BuilderCodec.builder(
             PropertyDeedRef.class, PropertyDeedRef::new
         )

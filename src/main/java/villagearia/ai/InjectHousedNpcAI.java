@@ -2,7 +2,6 @@ package villagearia.ai;
 
 import java.util.Set;
 import java.util.function.BiConsumer;
-import javax.annotation.Nonnull;
 
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
@@ -12,18 +11,14 @@ import com.hypixel.hytale.component.dependency.Order;
 import com.hypixel.hytale.component.dependency.SystemDependency;
 import com.hypixel.hytale.component.query.Query;
 import com.hypixel.hytale.component.system.tick.TickingSystem;
-import com.hypixel.hytale.logger.HytaleLogger;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
 import com.hypixel.hytale.server.npc.systems.RoleSystems;
 import com.hypixel.hytale.server.npc.systems.SteeringSystem;
 
-import villagearia.component.VillageZone;
-
 public class InjectHousedNpcAI extends TickingSystem<EntityStore> {
 
-    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     public HousedNpcEntityInjection injection = new HousedNpcEntityInjection();
     
     public Set<Dependency<EntityStore>> dependencies = Set.of(
@@ -32,47 +27,42 @@ public class InjectHousedNpcAI extends TickingSystem<EntityStore> {
         /*THIRD*/  new SystemDependency<EntityStore,SteeringSystem>(Order.BEFORE, SteeringSystem.class)
     );
 
-    @Nonnull
-    @SuppressWarnings("null")
+    
+    
     @Override
     public Set<Dependency<EntityStore>> getDependencies() {
         return dependencies;
     }
 
+    private final Query<EntityStore> cachedQuery;
+
     public InjectHousedNpcAI() {
         super();
+        this.cachedQuery = Query.and(
+            HousedNpcEntity.getComponentType(),
+            NPCEntity.getComponentType(),
+            TransformComponent.getComponentType()
+        );
     }
 
-    @SuppressWarnings({"null"})
     @Override
-    public void tick(float dt, int systemIndex, @Nonnull Store<EntityStore> store) {
-        BiConsumer<ArchetypeChunk<EntityStore>, CommandBuffer<EntityStore>> consumer = (chunk, cb) -> {
+    public void tick(float dt, int systemIndex, Store<EntityStore> store) {
+        store.forEachChunk(cachedQuery, (BiConsumer<ArchetypeChunk<EntityStore>, CommandBuffer<EntityStore>>) (chunk, cb) -> {
             for (int i = 0; i < chunk.size(); i++) {
                 tickOneHousedNpc(dt, systemIndex, store, chunk, cb, i);
             }
-        };
-
-
-        var aiHousedType     = HousedNpcEntity.getComponentType();
-        var npcType          = NPCEntity.getComponentType();
-        var transformType    = TransformComponent.getComponentType();
-        var query = Query.and(aiHousedType, npcType, transformType);
-
-        store.forEachChunk(query, consumer);
+        });
     }
 
     public void tickOneHousedNpc(
-        float dt, int systemIndex, @Nonnull Store<EntityStore> store,
+        float dt, int systemIndex,  Store<EntityStore> store,
         ArchetypeChunk<EntityStore> chunk, CommandBuffer<EntityStore> cb,
         int i
     ) {
-        var aiHousedType     = HousedNpcEntity.getComponentType();
-        var npcType          = NPCEntity.getComponentType();
-
-        var aiComponent = chunk.getComponent(i, aiHousedType);
+        var aiComponent = chunk.getComponent(i, HousedNpcEntity.getComponentType());
         if (aiComponent == null) return;
         
-        var npc          = chunk.getComponent(i, npcType);
+        var npc          = chunk.getComponent(i, NPCEntity.getComponentType());
         if (npc == null) return;
 
         var npcRole = npc.getRole();
@@ -95,7 +85,7 @@ public class InjectHousedNpcAI extends TickingSystem<EntityStore> {
     }
 
     public static record InjectHousedNpcAiContext (
-        float dt, int systemIndex, @Nonnull Store<EntityStore> store,
+        float dt, int systemIndex,  Store<EntityStore> store,
         ArchetypeChunk<EntityStore> chunk, CommandBuffer<EntityStore> cb,
         int i, HousedNpcEntity housedNpc, NPCEntity npc
     ) {}

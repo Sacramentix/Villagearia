@@ -1,32 +1,28 @@
 package villagearia.graph;
 
-import com.hypixel.hytale.component.ArchetypeChunk;
-import com.hypixel.hytale.component.CommandBuffer;
-import com.hypixel.hytale.component.Ref;
-import com.hypixel.hytale.component.Store;
-import com.hypixel.hytale.component.query.Query;
-import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.HashSet;
-import java.util.Queue;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
-@SuppressWarnings("null")
+import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+
+import villagearia.resource.manager.VillageZoneManager;
+
+
 public class VillageZoneGraph {
     
     public static final Map<UUID, Set<UUID>> graph = new ConcurrentHashMap<>();
-
-    private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
 
     public static void addNode(UUID node) {
         if (!graph.containsKey(node)) {
@@ -35,11 +31,10 @@ public class VillageZoneGraph {
     }
 
     public static void removeNode(UUID node) {
-        graph.remove(node);
-        // Clean up references from other nodes
-        for (var connections : graph.values()) {
-            connections.remove(node);
+        for (var neighbour : graph.get(node)) {
+            removeConnection(node, neighbour);
         }
+        graph.remove(node);
     }
     
     public static void addConnection(UUID node1, UUID node2) {
@@ -60,13 +55,12 @@ public class VillageZoneGraph {
 
         for (var uuid : graph.keySet()) {
             if (uuid == null) continue;
-            var villageZone = villagearia.VillageZoneManager.getVillageZone(store, uuid);
-            if (villageZone != null && villageZone.center != null) {
-                var distSq = villageZone.center.distanceSquared(pos);
-                if (distSq < minDistanceSq) {
-                    minDistanceSq = distSq;
-                    nearestUUUID = uuid;
-                }
+            var villageZone = VillageZoneManager.getVillageZone(store, uuid);
+            if (villageZone == null) continue;
+            var distSq = villageZone.center.distanceSquared(pos);
+            if (distSq < minDistanceSq) {
+                minDistanceSq = distSq;
+                nearestUUUID = uuid;
             }
         }
         return nearestUUUID;
@@ -108,19 +102,19 @@ public class VillageZoneGraph {
         return path;
     }
 
-    public static Queue<UUID> getShortestPath(UUID start, UUID end, Store<EntityStore> store) {
+    public static ArrayDeque<UUID> getShortestPath(UUID start, UUID end, Store<EntityStore> store) {
         if (!graph.containsKey(start) || !graph.containsKey(end)) {
-            return new LinkedList<>();
+            return new ArrayDeque<UUID>();
         }
         if (start.equals(end)) {
-            Queue<UUID> path = new LinkedList<>();
+            var path = new ArrayDeque<UUID>();
             path.add(start);
             return path;
         }
 
         var dist = new HashMap<UUID, Integer>();
         var predecessors = new HashMap<UUID, List<UUID>>();
-        Queue<UUID> queue = new LinkedList<>();
+        var queue = new ArrayDeque<UUID>();
 
         dist.put(start, 0);
         queue.add(start);
@@ -155,20 +149,54 @@ public class VillageZoneGraph {
         }
 
         if (!found) {
-            return new LinkedList<>();
+            return new ArrayDeque<UUID>();
         }
 
-        var pathList = new ArrayList<UUID>();
+        var pathDeque = new ArrayDeque<UUID>();
         var curr = end;
-        pathList.add(curr);
+        pathDeque.addFirst(curr);
 
         while (!curr.equals(start)) {
             var preds = predecessors.get(curr);
             curr = preds.get(ThreadLocalRandom.current().nextInt(preds.size()));
-            pathList.add(curr);
+            pathDeque.addFirst(curr);
         }
 
-        Collections.reverse(pathList);
-        return new LinkedList<>(pathList);
+        return pathDeque;
+    }
+
+    public static List<UUID> getVillageZonesWithinDepth(UUID start, int maxDepth, Store<EntityStore> store) {
+        if (start == null || !graph.containsKey(start)) return Collections.emptyList();
+
+        var visited = new HashSet<UUID>();
+        var resultList = new ArrayList<UUID>();
+        var queue = new LinkedList<UUID>(); // or ArrayDeque for slightly better cache locality, but LinkedList is fine for N=20
+        var depths = new HashMap<UUID, Integer>();
+
+        queue.add(start);
+        visited.add(start);
+        depths.put(start, 0);
+        resultList.add(start);
+
+        while (!queue.isEmpty()) {
+            var current = queue.poll();
+            var currentDepth = depths.get(current);
+
+            if (currentDepth >= maxDepth) continue;
+
+            var neighbors = graph.get(current);
+            if (neighbors == null) continue;
+
+            for (var neighbor : neighbors) {
+                if (visited.contains(neighbor)) continue;
+                visited.add(neighbor);
+                depths.put(neighbor, currentDepth + 1);
+                queue.add(neighbor);
+                resultList.add(neighbor);
+            }
+        }
+
+        Collections.shuffle(resultList, ThreadLocalRandom.current());
+        return resultList;
     }
 }
