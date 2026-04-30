@@ -1,37 +1,24 @@
 package villagearia.ai;
 
-import java.util.ArrayDeque;
-import java.util.LinkedList;
+import java.util.Collections;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-import com.hypixel.hytale.builtin.mounts.BlockMountAPI;
-import com.hypixel.hytale.builtin.mounts.MountedComponent;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
-import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.math.util.ChunkUtil;
-import com.hypixel.hytale.math.vector.Vector3d;
-import com.hypixel.hytale.math.vector.Vector3f;
-import com.hypixel.hytale.math.vector.Vector3i;
-import com.hypixel.hytale.protocol.AnimationSlot;
-import com.hypixel.hytale.server.core.entity.AnimationUtils;
 import com.hypixel.hytale.server.core.modules.entity.component.HeadRotation;
 import com.hypixel.hytale.server.core.modules.entity.component.TransformComponent;
 import com.hypixel.hytale.server.core.modules.time.WorldTimeResource;
-import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import com.hypixel.hytale.server.core.util.FillerBlockUtil;
 import com.hypixel.hytale.server.npc.entities.NPCEntity;
-import com.hypixel.hytale.server.npc.navigation.AStarNodePoolProviderSimple;
 
-import villagearia.ai.HousedNpcPathfinder.PathfindError;
-import villagearia.ai.action.WaveNearbyNpc;
+import villagearia.ai.action.Leisure;
+import villagearia.ai.action.Routine;
 import villagearia.ai.action.Work;
-import villagearia.ai.action.Work.WorkContext;
-import villagearia.graph.VillageZoneGraph;
-import villagearia.resource.manager.VillageZoneManager;
-import villagearia.utils.JomlUtils;
-import villagearia.utils.MyBlockUtils;
+import villagearia.ai.action.interrupt.WaveNearbyNpc;
+import villagearia.ai.action.routine.RoutinesAvailable;
+import villagearia.ai.schedule.DailyScheduleComponent;
 
 public class HousedNpcEntityInjection {
 
@@ -56,14 +43,7 @@ public class HousedNpcEntityInjection {
 
         wipeRoleBehavior(npc);
         
-        // var world = store.getExternalData().getWorld();
-        
         var worldTime = store.getResource(WorldTimeResource.getResourceType());
-        // var daytimeSeconds = world.getDaytimeDurationSeconds();
-        // var nighttimeSeconds = world.getNighttimeDurationSeconds();
-        // var totalDayDurationSeconds = daytimeSeconds + nighttimeSeconds;
-        var isNight = worldTime != null && (worldTime.getDayProgress() > 0.8 || worldTime.getDayProgress() < 0.2);
-        var isDay = !isNight;
 
         var entityRef = chunk.getReferenceTo(tickIndex);
 
@@ -73,307 +53,104 @@ public class HousedNpcEntityInjection {
 
         var pos = transform.getPosition();
 
-        if (WaveNearbyNpc.tryWaveAtNearby(
-            new WaveNearbyNpc.WaveNearbyNpcContext(entityRef, housedNpc, worldTime, transform, headRotation, pos, store, cb)
-        )) {
-            return;
+        // Ensure stack and schedule exist
+        var actionStack = cb.ensureAndGetComponent(entityRef, villagearia.ai.action.ActionStackComponent.getComponentType());
+        var schedule = cb.ensureAndGetComponent(entityRef, DailyScheduleComponent.getComponentType());
+        // npc is already available in the scope
+
+        // Generate initial schedule if empty
+        if (schedule.slots.isEmpty()) {
+            generateSchedule(schedule, housedNpc);
         }
 
-        var pathSession = housedNpc.getPathSession();
-        if (
-            isNight &&
-            !housedNpc.getState().equals("SLEEPING") &&
-            !housedNpc.getState().equals("PATHING_TOWARD_BED")
-        ) {
-            housedNpc.setState("PATHING_TOWARD_BED");
-            housedNpc.setTargetPos((Vector3i) null);
-            housedNpc.setPathQueue(new ArrayDeque<>());
-            pathSession.currentTarget = (Vector3i) null;
-            standup(entityRef, cb);
-        }
-        if (
-            isDay && (
-                housedNpc.getState().equals("SLEEPING") ||
-                housedNpc.getState().equals("PATHING_TOWARD_BED")
-            )
-        ) {
-            housedNpc.setState("PATHING_RANDOM");
-            housedNpc.setTargetPos((Vector3i) null);
-            housedNpc.setPathQueue(new ArrayDeque<>());
-            pathSession.currentTarget = (Vector3i) null;
-            standup(entityRef, cb);
-        }
-
-        // set state
-        var state = housedNpc.getState();
-
-        if ("PATHING_RANDOM".equals(state)) {
-            Work.behavior(new WorkContext(entityRef, housedNpc, npc, worldTime, transform, headRotation, pos,store, dt, cb));
-            return;
-            // var queue = housedNpc.getPathQueue();
-            // if (housedNpc.getTargetPos() == null && queue.isEmpty()) {
-            //     refillQueueWithRandomVillageZonePath(store, pos, housedNpc);
-            // }
-            // if (housedNpc.getTargetPos() == null) {
-            //     setPathfindTargetToNext(store, housedNpc);
-            // }
-            
-            // var tPos = housedNpc.getTargetPos();
-            // if (tPos == null) return;
-            
-            // var actualTarget = new Vector3d(tPos.x + 0.5, tPos.y, tPos.z + 0.5);
-            
-            // pathSession.world = store.getExternalData().getWorld();
-            // var provider = store.getResource(AStarNodePoolProviderSimple.getResourceType());
-            // HousedNpcPathfinder.pathfindTo(npc, pathSession, provider, store, tPos, pos, entityRef, actualTarget, headRotation, cb);
-
-            // var dx = actualTarget.x - pos.x;
-            // var dy = actualTarget.y - pos.y;
-            // var dz = actualTarget.z - pos.z;
-            // var distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-            // if (distance < 3.0 && !queue.isEmpty()) {
-            //     LOGGER.atInfo().log("NULL TARGET " + housedNpc.getTargetPos().toString() + " | " + distance);
-
-            //     housedNpc.setTargetPos((Vector3i) null);
-            //     // if (!success) {
-            //     //     housedNpc.setState("SEATING");
-            //     //     return;
-            //     // }
-            // } else if (distance < 1.5 && queue.isEmpty()) {
-            //     housedNpc.setState("SEATING");
-
-            // }
-            
-        } else if ("SEATING".equals(state)) {
-            if (entityRef.getStore().getComponent(entityRef, MountedComponent.getComponentType()) == null) {
-                sitOnNearestBench(entityRef, store.getExternalData().getWorld(), pos, cb);
+        // Check for interrupts like Waving
+        var waveCtx = new WaveNearbyNpc.WaveNearbyNpcContext(entityRef, housedNpc, npc, worldTime, transform, headRotation, pos, store, cb);
+        if (WaveNearbyNpc.behavior(waveCtx)) {
+            if (!actionStack.stack.contains("WAVE")) {
+                actionStack.stack.push("WAVE");
             }
-            housedNpc.increaseWaitTicks();
-            if (housedNpc.getWaitTicks() > 500) {
-                housedNpc.setState("PATHING_RANDOM");
-                housedNpc.setTargetPos((Vector3i) null);
-                housedNpc.setPathQueue(new ArrayDeque<>());
-                housedNpc.setWaitTicks(0);
-                standup(entityRef, cb);
-            }
-
-
-        } else if ("PATHING_TOWARD_BED".equals(state)) {
-            var queue = housedNpc.getPathQueue();
-            if (housedNpc.getTargetPos() == null && queue.isEmpty()) {
-                refillQueueWithVillageZonePathTowardBed(store, pos, housedNpc);
-                // LOGGER.atInfo().log(
-                //     "QUEUE REFILL " +
-                //     queue.stream().map((uuid) -> {
-                //         var ref = store.getExternalData().getRefFromUUID(uuid);
-                //         var t = ref.getStore().getComponent(ref, TransformComponent.getComponentType());
-                //         return "(|"+uuid+"|"+ t.getPosition().toString()+")";
-                //     }).collect(Collectors.joining(",\n ", "[\n", "\n]"))
-                // );
-            }
-            if (housedNpc.getTargetPos() == null) {
-                setPathfindTargetToNext(store, housedNpc);
-            }
-            
-            var tPos = housedNpc.getTargetPos();
-            if (tPos == null) return;
-            
-            var actualTarget = new Vector3d(tPos.x + 0.5, tPos.y, tPos.z + 0.5);
-            
-            pathSession.world = store.getExternalData().getWorld();
-            var provider = store.getResource(AStarNodePoolProviderSimple.getResourceType());
-            try {
-                HousedNpcPathfinder.pathfindTo(npc, pathSession, provider, store, tPos, pos, entityRef, actualTarget, headRotation, cb);
-            } catch(PathfindError e) {
-                
-            }
-
-            var distance = actualTarget.distanceTo(pos);
-
-            if (distance < 3.0 && !queue.isEmpty()) {
-                LOGGER.atInfo().log("NULL TARGET " + housedNpc.getTargetPos().toString() + " | " + distance);
-
-                housedNpc.setTargetPos((Vector3i) null);
-                // if (!success) {
-                //     housedNpc.setState("SEATING");
-                //     return;
-                // }
-            } else if (distance < 1.5 && queue.isEmpty()) {
-                housedNpc.setTargetPos(housedNpc.getHomeBed());                
-            }
-            if (
-                housedNpc.getTargetPos() != null &&
-                housedNpc.getTargetPos().distanceTo((int) pos.x, (int) pos.y, (int) pos.z) < 1.5
-            ) {
-                housedNpc.setState("SLEEPING");
-            }
-        } else if ("SLEEPING".equals(state)) {
-            housedNpc.workDuration -= dt;
-            if (entityRef.getStore().getComponent(entityRef, MountedComponent.getComponentType()) == null) {
-                sleepOnNearestBed(entityRef, store.getExternalData().getWorld(), pos, cb);
-            }
-            AnimationUtils.playAnimation(entityRef, AnimationSlot.Status, "Sleep", cb);
         } else {
-            housedNpc.setState("PATHING_RANDOM");
+            actionStack.stack.remove("WAVE");
         }
-        
 
-    }
+        // If high-priority action is active, block standard schedule evaluation
+        if (!actionStack.stack.isEmpty()) {
+            var currentAction = actionStack.stack.peek();
+            if ("WAVE".equals(currentAction)) {
+                return; // Interaction locks them in place
+            }
+        }
 
-
-    public void refillQueueWithRandomVillageZonePath(Store<EntityStore> store, Vector3d pos, HousedNpcEntity housedNpc) {
-        var queue = housedNpc.getPathQueue();
-        var startingZone = VillageZoneGraph.getNearestVillageZone(JomlUtils.toJoml(pos), store);
-        if (startingZone == null) return;
-        var newPath = VillageZoneGraph.getRandomVillageZonePath(startingZone, 3, store);
-        if (newPath != null) queue.addAll(newPath);
-    }
-
-    public void refillQueueWithVillageZonePathTowardBed(Store<EntityStore> store, Vector3d pos, HousedNpcEntity housedNpc) {
-        var queue = housedNpc.getPathQueue();
-        var startingZone = VillageZoneGraph.getNearestVillageZone(JomlUtils.toJoml(pos), store);
-        if (startingZone == null) return;
-        var endingZone = housedNpc.getVillageZoneUuid();
-        var newPath = VillageZoneGraph.getShortestPath(startingZone, endingZone, store);
-        if (newPath != null) queue.addAll(newPath);
-    }
-
-    public boolean setPathfindTargetToNext(Store<EntityStore> store, HousedNpcEntity housedNpc) {;
-        var queue = housedNpc.getPathQueue();
-        var nextZone = queue.poll();
-        if (nextZone == null) return false;
-        var villageZone = VillageZoneManager.getVillageZone(store, nextZone);
-        if (villageZone == null) return false;
-        housedNpc.setTargetPos(JomlUtils.toHytale(villageZone.center));
-        return true;
-    }
-
-    private void sitOnNearestBench(Ref<EntityStore> entityRef, World world, Vector3d pos, CommandBuffer<EntityStore> cb) {
-        if (world == null || pos == null || entityRef == null) return;
-        
-        int radius = 3;
-        int minX = (int) Math.floor(pos.x) - radius;
-        int maxX = (int) Math.floor(pos.x) + radius;
-        int minY = (int) Math.floor(pos.y) - 2;
-        int maxY = (int) Math.floor(pos.y) + 2;
-        int minZ = (int) Math.floor(pos.z) - radius;
-        int maxZ = (int) Math.floor(pos.z) + radius;
-        
-        Vector3i nearestBench = null;
-        double minDistance = Double.MAX_VALUE;
-        
-        for (int x = minX; x <= maxX; x++) {
-        for (int y = minY; y <= maxY; y++) {
-        for (int z = minZ; z <= maxZ; z++) {
-            var blockPos = new Vector3i(x, y, z);
-            var blockType = MyBlockUtils.getSafeBlockType(world, blockPos);
-            if (blockType == null) continue;
-            var isSeat = false;
-            if (blockType.getSeats() != null) {
-                isSeat = true;
-            } else if (blockType.getId() != null) {
-                var id = blockType.getId().toLowerCase();
-                if (id.contains("bench") || id.contains("chair") || id.contains("stool") || id.contains("seat") || id.contains("couch")) {
-                    if (blockType.getSeats() != null) {
-                        isSeat = true;
-                    }
+        // Evaluate standard Daily Schedule fallback
+        var dayProgress = worldTime != null ? worldTime.getDayProgress() : 0.5f;
+        String currentActivity = "LEISURE"; // default
+        for (var slot : schedule.slots) {
+            if (slot.startProgress < slot.endProgress) {
+                if (dayProgress >= slot.startProgress && dayProgress <= slot.endProgress) {
+                    currentActivity = slot.activity; break;
+                }
+            } else {
+                // Wraps around midnight 
+                if (dayProgress >= slot.startProgress || dayProgress <= slot.endProgress) {
+                    currentActivity = slot.activity; break;
                 }
             }
-            
-            if (!isSeat) continue;
-            var chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(x, z));
-            if (chunk != null) {
-                int filler = MyBlockUtils.getSafeBlockFiller(world, x, y, z);
-                if (filler != 0) {
-                    blockPos = new Vector3i(
-                        x - FillerBlockUtil.unpackX(filler),
-                        y - FillerBlockUtil.unpackY(filler),
-                        z - FillerBlockUtil.unpackZ(filler)
-                    );
-                }
-            }
-            
-            double dx = blockPos.x + 0.5 - pos.x;
-            double dy = blockPos.y + 0.5 - pos.y;
-            double dz = blockPos.z + 0.5 - pos.z;
-            double distSq = dx*dx + dy*dy + dz*dz;
-            if (distSq >= minDistance) continue;
-            minDistance = distSq;
-            nearestBench = blockPos;
         }
-        }
-        }
-        
-        if (nearestBench != null) {
-            var hitPos = new Vector3f(nearestBench.x + 0.5f, nearestBench.y + 0.5f, nearestBench.z + 0.5f);
-            BlockMountAPI.mountOnBlock(entityRef, cb, nearestBench, hitPos);
-            AnimationUtils.playAnimation(entityRef, AnimationSlot.Status, "Sit", cb);
+
+        applyScheduledActivity(entityRef, currentActivity, cb);
+
+        // Delegate to active component behavior
+        if ("SLEEP".equals(currentActivity) || cb.getComponent(entityRef, Routine.RoutineComponent.getComponentType()) != null) {
+            Routine.behavior(new Routine.RoutineContext(entityRef, housedNpc, npc, worldTime, transform, headRotation, pos, store, dt, cb));
+        } else if ("WORK".equals(currentActivity)) {
+            Work.behavior(new Work.WorkContext(entityRef, housedNpc, npc, worldTime, transform, headRotation, pos, store, dt, cb));
+        } else {
+            Leisure.behavior(new Leisure.LeisureContext(entityRef, housedNpc, npc, worldTime, transform, headRotation, pos, store, dt, cb));
         }
     }
 
-    private void standup(Ref<EntityStore> entityRef, CommandBuffer<EntityStore> cb) {
-        if (cb.getComponent(entityRef, MountedComponent.getComponentType()) != null) {
-            cb.removeComponent(entityRef, MountedComponent.getComponentType());
-        }
-        AnimationUtils.stopAnimation(entityRef, AnimationSlot.Status, true, cb);
+    private void generateSchedule(DailyScheduleComponent schedule, HousedNpcEntity housedNpc) {
+        // There is 7 time range of 2 hours for Work or leisure
+        // When work duration goal is meet all work time will be leisure time
+        var workLeisureTimeRange = 2.00f; // 2:00
+        float goalHhMm = housedNpc.workDurationGoal;
+        int goalHours = (int) goalHhMm;
+        float goalMins = Math.round((goalHhMm - goalHours) * 100f);
+        float goalDecimalHours = goalHours + (goalMins / 60f);
+
+        int amountOfSlotNeededForWork = (int) Math.floor(goalDecimalHours / workLeisureTimeRange) + 1;
+
+        var workLeisureSlots = IntStream.range(0, 7)
+            .mapToObj(i -> i < amountOfSlotNeededForWork ? "WORK" : "LEISURE")
+            .collect(Collectors.toList());
+        Collections.shuffle(workLeisureSlots);
+
+        schedule.addSlotHhMm( 0.00f,  6.00f, "SLEEP");
+        schedule.addSlotHhMm( 6.01f,  8.00f, workLeisureSlots.get(0));
+        schedule.addSlotHhMm( 8.01f, 10.00f, workLeisureSlots.get(1));
+        schedule.addSlotHhMm(10.01f, 12.00f, workLeisureSlots.get(2));
+        schedule.addSlotHhMm(12.01f, 13.30f, "LEISURE"); // EAT -> We don't have eat for the moment
+        schedule.addSlotHhMm(13.31f, 15.30f, workLeisureSlots.get(3));
+        schedule.addSlotHhMm(15.31f, 17.30f, workLeisureSlots.get(4));
+        schedule.addSlotHhMm(17.31f, 19.30f, workLeisureSlots.get(5));
+        schedule.addSlotHhMm(19.31f, 21.30f, workLeisureSlots.get(6));
+        schedule.addSlotHhMm(21.31f, 23.59f, "SLEEP");
+
     }
 
-    private void sleepOnNearestBed(Ref<EntityStore> entityRef, World world, Vector3d pos, CommandBuffer<EntityStore> cb) {
-        if (world == null || pos == null || entityRef == null) return;
-        
-        var radius = 3;
-        var minX = (int) Math.floor(pos.x) - radius;
-        var maxX = (int) Math.floor(pos.x) + radius;
-        var minY = (int) Math.floor(pos.y) - 2;
-        var maxY = (int) Math.floor(pos.y) + 2;
-        var minZ = (int) Math.floor(pos.z) - radius;
-        var maxZ = (int) Math.floor(pos.z) + radius;
-        
-        Vector3i nearestBench = null;
-        var minDistance = Double.MAX_VALUE;
-        
-        for (int x = minX; x <= maxX; x++) {
-        for (int y = minY; y <= maxY; y++) {
-        for (int z = minZ; z <= maxZ; z++) {
-            var blockPos = new Vector3i(x, y, z);
-            
-            var blockType = MyBlockUtils.getSafeBlockType(world, blockPos);
-            if (blockType != null) continue;
-            var isBed = false;
-            if (blockType.getBeds() != null) {
-                isBed = true;
+    private void applyScheduledActivity(Ref<EntityStore> entityRef, String activity, CommandBuffer<EntityStore> cb) {
+        if ("SLEEP".equals(activity)) {
+            cb.tryRemoveComponent(entityRef, Work.WorkComponent.getComponentType());
+            cb.tryRemoveComponent(entityRef, Leisure.LeisureComponent.getComponentType());
+            if (cb.getComponent(entityRef, Routine.RoutineComponent.getComponentType()) == null) {
+                cb.addComponent(entityRef, Routine.RoutineComponent.getComponentType(), new Routine.RoutineComponent(RoutinesAvailable.SLEEP_ROUTINE));
             }
-            
-            if (isBed) continue;
-            var chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(x, z));
-            if (chunk != null) {
-                var filler = MyBlockUtils.getSafeBlockFiller(world, x, y, z);
-                if (filler != 0) {
-                    blockPos = new Vector3i(
-                        x - FillerBlockUtil.unpackX(filler),
-                        y - FillerBlockUtil.unpackY(filler),
-                        z - FillerBlockUtil.unpackZ(filler)
-                    );
-                }
-            }
-            
-            double dx = blockPos.x + 0.5 - pos.x;
-            double dy = blockPos.y + 0.5 - pos.y;
-            double dz = blockPos.z + 0.5 - pos.z;
-            double distSq = dx*dx + dy*dy + dz*dz;
-            if (distSq < minDistance) {
-                minDistance = distSq;
-                nearestBench = blockPos;
-            }
-        }
-        }
-        }
-        
-        if (nearestBench != null) {
-            var hitPos = new Vector3f(nearestBench.x + 0.5f, nearestBench.y + 0.5f, nearestBench.z + 0.5f);
-            BlockMountAPI.mountOnBlock(entityRef, cb, nearestBench, hitPos);
-            AnimationUtils.playAnimation(entityRef, AnimationSlot.Status, "Sleep", cb);
+        } else if ("WORK".equals(activity)) {
+            cb.tryRemoveComponent(entityRef, Routine.RoutineComponent.getComponentType());
+            cb.tryRemoveComponent(entityRef, Leisure.LeisureComponent.getComponentType());
+        } else if ("LEISURE".equals(activity)) {
+            cb.tryRemoveComponent(entityRef, Routine.RoutineComponent.getComponentType());
+            cb.tryRemoveComponent(entityRef, Work.WorkComponent.getComponentType());
         }
     }
 

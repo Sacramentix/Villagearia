@@ -19,6 +19,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import villagearia.ai.HousedNpcEntity;
 import villagearia.ai.InjectHousedNpcAI;
 import villagearia.ai.action.Work.WorkComponent;
+import villagearia.ai.action.Routine.RoutineComponent;
 import villagearia.ai.action.work.TannerWork.TannerWorkComponent;
 import villagearia.ai.action.leisure.WanderNearbyZone.WanderNearbyZoneComponent;
 import villagearia.component.PropertyDeed;
@@ -88,6 +89,11 @@ public class Villagearia extends JavaPlugin {
         return workComponentType;
     };
 
+    private ComponentType<EntityStore, RoutineComponent> routineComponentType;
+    public ComponentType<EntityStore, RoutineComponent> getRoutineComponentType() {
+        return routineComponentType;
+    }
+
     private ComponentType<EntityStore, villagearia.ai.action.Leisure.LeisureComponent> leisureComponentType;
     public ComponentType<EntityStore, villagearia.ai.action.Leisure.LeisureComponent> getLeisureComponentType() {
         return leisureComponentType;
@@ -103,7 +109,25 @@ public class Villagearia extends JavaPlugin {
         return wanderNearbyZoneComponentType;
     };
 
+    private ComponentType<EntityStore, villagearia.ai.action.ActionStackComponent> actionStackComponentType;
+    public ComponentType<EntityStore, villagearia.ai.action.ActionStackComponent> getActionStackComponentType() {
+        return actionStackComponentType;
+    }
 
+    private ComponentType<EntityStore, villagearia.ai.schedule.DailyScheduleComponent> dailyScheduleComponentType;
+    public ComponentType<EntityStore, villagearia.ai.schedule.DailyScheduleComponent> getDailyScheduleComponentType() {
+        return dailyScheduleComponentType;
+    }
+
+    private ComponentType<EntityStore, villagearia.ai.action.interrupt.WaveNearbyNpc.WaveNearbyNpcComponent> waveNearbyNpcComponentType;
+    public ComponentType<EntityStore, villagearia.ai.action.interrupt.WaveNearbyNpc.WaveNearbyNpcComponent> getWaveNearbyNpcComponentType() {
+        return waveNearbyNpcComponentType;
+    }
+
+    private ComponentType<EntityStore, villagearia.ai.action.interrupt.WaveNearbyNpc.WavedThisDayComponent> wavedThisDayComponentType;
+    public ComponentType<EntityStore, villagearia.ai.action.interrupt.WaveNearbyNpc.WavedThisDayComponent> getWavedThisDayComponentType() {
+        return wavedThisDayComponentType;
+    }
 
     public static Villagearia instance() {
         return instance;
@@ -121,8 +145,13 @@ public class Villagearia extends JavaPlugin {
         this.aiHousedNpcComponentType     = EntityStore.REGISTRY.registerComponent(HousedNpcEntity.class,     "AiHousedNpc",     HousedNpcEntity.CODEC);
         this.workComponentType            = EntityStore.REGISTRY.registerComponent(WorkComponent.class,              "Work",       WorkComponent.CODEC);
         this.tannerWorkComponentType      = EntityStore.REGISTRY.registerComponent(villagearia.ai.action.work.TannerWork.TannerWorkComponent.class,  "TannerWork", villagearia.ai.action.work.TannerWork.TannerWorkComponent.CODEC);
+        this.routineComponentType = EntityStore.REGISTRY.registerComponent(RoutineComponent.class, "Routine", RoutineComponent.CODEC);
         this.leisureComponentType = EntityStore.REGISTRY.registerComponent(villagearia.ai.action.Leisure.LeisureComponent.class, "Leisure", villagearia.ai.action.Leisure.LeisureComponent.CODEC);
         this.wanderNearbyZoneComponentType = EntityStore.REGISTRY.registerComponent(villagearia.ai.action.leisure.WanderNearbyZone.WanderNearbyZoneComponent.class, "WanderNearbyZone", villagearia.ai.action.leisure.WanderNearbyZone.WanderNearbyZoneComponent.CODEC);
+        this.actionStackComponentType = EntityStore.REGISTRY.registerComponent(villagearia.ai.action.ActionStackComponent.class, "ActionStack", villagearia.ai.action.ActionStackComponent.CODEC);
+        this.dailyScheduleComponentType = EntityStore.REGISTRY.registerComponent(villagearia.ai.schedule.DailyScheduleComponent.class, "DailySchedule", villagearia.ai.schedule.DailyScheduleComponent.CODEC);
+        this.waveNearbyNpcComponentType = EntityStore.REGISTRY.registerComponent(villagearia.ai.action.interrupt.WaveNearbyNpc.WaveNearbyNpcComponent.class, villagearia.ai.action.interrupt.WaveNearbyNpc.WaveNearbyNpcComponent::new);
+        this.wavedThisDayComponentType = EntityStore.REGISTRY.registerComponent(villagearia.ai.action.interrupt.WaveNearbyNpc.WavedThisDayComponent.class, "WavedThisDay", villagearia.ai.action.interrupt.WaveNearbyNpc.WavedThisDayComponent.CODEC);
 
         
         this.villageZoneStoreResourceType = 

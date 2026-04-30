@@ -72,10 +72,6 @@ public class HousedNpcEntity implements Component<EntityStore> {
     public float somnolence = 100.0f;
     public float social = 100.0f;
 
-    public Map<UUID, Float> npcMeeted = new HashMap<>();
-    public UUID lastGreetedNpc = null;
-    public double lastGreetTime = 0.0;
-
     private HousedNpcPathSession pathSession = new HousedNpcPathSession();
 
     public HousedNpcEntity() {

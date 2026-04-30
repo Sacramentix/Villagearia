@@ -57,7 +57,11 @@ public class WanderNearbyZone {
             var blockOfInterestIndex = store.getResource(BlockOfInterestStore.getResourceType()).getIndex();
             var blockOfInterests = blockOfInterestIndex.get(targetZoneUuid);
             
-            if (blockOfInterests != null && blockOfInterests.containsKey(BlockOfInterest.BENCH) && !blockOfInterests.get(BlockOfInterest.BENCH).isEmpty()) {
+            if (
+                blockOfInterests != null &&
+                blockOfInterests.containsKey(BlockOfInterest.BENCH) &&
+                !blockOfInterests.get(BlockOfInterest.BENCH).isEmpty()
+            ) {
                 var benches = new ArrayList<>(blockOfInterests.get(BlockOfInterest.BENCH));
                 Collections.shuffle(benches);
                 wanderComp.targetPos = benches.get(0); // Pick a random bench

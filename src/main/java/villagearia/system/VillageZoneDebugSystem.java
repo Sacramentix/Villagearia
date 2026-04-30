@@ -51,10 +51,11 @@ public class VillageZoneDebugSystem extends TickingSystem<EntityStore> {
             for (int i = 0; i < npcChunk.size(); i++) {
                 var housedNpc = npcChunk.getComponent(i, HousedNpcEntity.getComponentType());
                 var t = npcChunk.getComponent(i, TransformComponent.getComponentType());
+                var waveComp = npcChunk.getComponent(i, villagearia.ai.action.interrupt.WaveNearbyNpc.WaveNearbyNpcComponent.getComponentType());
                 if (housedNpc == null || t == null) continue;
 
                 var session = housedNpc.getPathSession();
-                if (housedNpc.lastGreetedNpc != null) {
+                if (waveComp != null && waveComp.lastGreetedNpc != null) {
                     DebugUtils.addSphere(world, t.getPosition(), DebugUtils.COLOR_RED, 0.5, 1.1f);
                 }
                 if (session != null && session.aStar != null) {

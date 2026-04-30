@@ -20,6 +20,7 @@ import com.hypixel.hytale.server.npc.systems.SteeringSystem;
 public class InjectHousedNpcAI extends TickingSystem<EntityStore> {
 
     public HousedNpcEntityInjection injection = new HousedNpcEntityInjection();
+    public static long totalTicks = 0;
     
     public Set<Dependency<EntityStore>> dependencies = Set.of(
         /*FIRST*/  new SystemDependency<EntityStore,RoleSystems.BehaviourTickSystem>(Order.AFTER, RoleSystems.BehaviourTickSystem.class),
@@ -47,6 +48,7 @@ public class InjectHousedNpcAI extends TickingSystem<EntityStore> {
 
     @Override
     public void tick(float dt, int systemIndex, Store<EntityStore> store) {
+        totalTicks++;
         store.forEachChunk(cachedQuery, (BiConsumer<ArchetypeChunk<EntityStore>, CommandBuffer<EntityStore>>) (chunk, cb) -> {
             for (int i = 0; i < chunk.size(); i++) {
                 tickOneHousedNpc(dt, systemIndex, store, chunk, cb, i);
